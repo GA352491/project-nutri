@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import Button from '../../components/ui/Button.vue'
 import Toast from '../../components/ui/Toast.vue'
-import apiClient from '../../api'
 
 interface PatientContact {
   id: string
@@ -13,6 +12,9 @@ interface PatientContact {
   lastMessage: string
   lastTime: string
   online: boolean
+  status: 'active' | 'pending'
+  intakeSummary?: string
+  targetCalories?: number
 }
 
 interface Message {
@@ -33,6 +35,7 @@ const showToast = ref(false)
 const inputMessage = ref('')
 const isSending = ref(false)
 const chatContainer = ref<HTMLElement | null>(null)
+const filterTab = ref<'active' | 'pending'>('active')
 
 function notify(msg: string) {
   toastMsg.value = msg
@@ -49,7 +52,9 @@ const patients = ref<PatientContact[]>([
     unreadCount: 2,
     lastMessage: 'Doctor, my fasting sugar was 114 mg/dL today after the walk.',
     lastTime: '10:45 AM',
-    online: true
+    online: true,
+    status: 'active',
+    targetCalories: 1850
   },
   {
     id: 'usr_2',
@@ -59,7 +64,9 @@ const patients = ref<PatientContact[]>([
     unreadCount: 0,
     lastMessage: 'Got the new cooked veggie plan. Feeling much less bloated!',
     lastTime: 'Yesterday',
-    online: false
+    online: false,
+    status: 'active',
+    targetCalories: 1600
   },
   {
     id: 'usr_3',
@@ -69,7 +76,9 @@ const patients = ref<PatientContact[]>([
     unreadCount: 0,
     lastMessage: 'Hit 140g protein yesterday with the paneer + sattu shake.',
     lastTime: '2 days ago',
-    online: true
+    online: true,
+    status: 'active',
+    targetCalories: 2600
   },
   {
     id: 'usr_4',
@@ -79,12 +88,50 @@ const patients = ref<PatientContact[]>([
     unreadCount: 0,
     lastMessage: 'Uploaded my 7-day sodium diary report for review.',
     lastTime: '3 days ago',
-    online: false
+    online: false,
+    status: 'active',
+    targetCalories: 1900
+  },
+  // Pending Consent & Intake Requests (Anti-Spam Filtered)
+  {
+    id: 'usr_req_1',
+    name: 'Rahul Verma',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80',
+    condition: 'Metabolic Syndrome & Fatty Liver',
+    unreadCount: 1,
+    lastMessage: 'Requesting personalized South Indian low-oil diet consultation.',
+    lastTime: '20 mins ago',
+    online: true,
+    status: 'pending',
+    intakeSummary: 'Age 38 · HbA1c 7.2% · BMI 28.4 · Vegetarian (No eggs) · Goal: Reverse NAFLD Grade 1 with regional meal modifications.'
+  },
+  {
+    id: 'usr_req_2',
+    name: 'Meera Nair',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80',
+    condition: 'Post-Natal Lactation Nutrition',
+    unreadCount: 1,
+    lastMessage: 'Intake form submitted for 30-day lactation nutrient density plan.',
+    lastTime: '1 hour ago',
+    online: false,
+    status: 'pending',
+    intakeSummary: 'Age 29 · 3 months post-partum · Low iron & calcium flags in bloodwork · Goal: Micronutrient repletion while nursing.'
   }
 ])
 
 const activePatientId = ref('usr_1')
-const activePatient = computed(() => patients.value.find(p => p.id === activePatientId.value) || patients.value[0])
+
+const visiblePatients = computed(() => {
+  return patients.value.filter(p => p.status === filterTab.value)
+})
+
+const pendingCount = computed(() => {
+  return patients.value.filter(p => p.status === 'pending').length
+})
+
+const activePatient = computed(() => {
+  return patients.value.find(p => p.id === activePatientId.value) || visiblePatients.value[0] || patients.value[0]
+})
 
 const conversations = ref<Record<string, Message[]>>({
   usr_1: [
@@ -107,7 +154,7 @@ const conversations = ref<Record<string, Message[]>>({
       time: '10:45 AM',
       attachment: {
         type: 'lab_report',
-        title: 'Continuous Glucose Monitor 24h Trend',
+        title: 'Continuous Glucose Monitor (CGM) 24h Log',
         meta: 'Avg: 118 mg/dL · TIR: 94%'
       }
     }
@@ -135,241 +182,316 @@ const conversations = ref<Record<string, Message[]>>({
       text: 'Uploaded my 7-day sodium diary report for review.',
       time: '3 days ago'
     }
+  ],
+  usr_req_1: [
+    {
+      id: 'req_m1',
+      sender: 'patient',
+      text: 'Hello Dr. Sarah, I was referred to you for metabolic health and fatty liver reversal. I have submitted my intake form and recent lipid panel. Looking forward to your guidance.',
+      time: '20 mins ago'
+    }
+  ],
+  usr_req_2: [
+    {
+      id: 'req_m2',
+      sender: 'patient',
+      text: 'Hello Dr. Sarah, I would like to request your review for my post-natal lactation diet plan. My complete blood count and iron levels are attached in my health bio.',
+      time: '1 hour ago'
+    }
   ]
 })
 
-const currentMessages = computed(() => conversations.value[activePatientId.value] || [])
-
-function selectPatient(patient: PatientContact) {
-  activePatientId.value = patient.id
-  patient.unreadCount = 0
-  scrollToBottom()
+function selectPatient(p: PatientContact) {
+  activePatientId.value = p.id
+  p.unreadCount = 0
 }
 
-function scrollToBottom() {
-  nextTick(() => {
-    if (chatContainer.value) {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
-    }
+function acceptPatientRequest(patient: PatientContact) {
+  patient.status = 'active'
+  filterTab.value = 'active'
+  activePatientId.value = patient.id
+
+  // Add welcome clinical acknowledgment message
+  if (!conversations.value[patient.id]) {
+    conversations.value[patient.id] = []
+  }
+  conversations.value[patient.id].push({
+    id: `exp_acc_${Date.now()}`,
+    sender: 'expert',
+    text: `Hello ${patient.name}! I have accepted your clinical consultation request and reviewed your intake details. Your 2-way clinical messaging care window is now open. How are your energy and meal timings today?`,
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   })
+
+  notify(`✅ Accepted ${patient.name} — Clinical messaging thread unlocked.`)
+}
+
+function declinePatientRequest(patient: PatientContact) {
+  const idx = patients.value.findIndex(p => p.id === patient.id)
+  if (idx !== -1) {
+    patients.value.splice(idx, 1)
+  }
+  notify(`ℹ️ Request declined with automated AI coach triage referral.`)
 }
 
 async function sendMessage() {
+  if (!inputMessage.value.trim() || !activePatient.value || activePatient.value.status === 'pending') return
+
   const text = inputMessage.value.trim()
-  if (!text) return
+  inputMessage.value = ''
+  isSending.value = true
 
   const newMsg: Message = {
-    id: `msg_${Date.now()}`,
+    id: `m_${Date.now()}`,
     sender: 'expert',
-    text: text,
+    text,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     status: 'sent'
   }
 
-  if (!conversations.value[activePatientId.value]) {
-    conversations.value[activePatientId.value] = []
+  if (!conversations.value[activePatient.value.id]) {
+    conversations.value[activePatient.value.id] = []
   }
-  conversations.value[activePatientId.value].push(newMsg)
-  inputMessage.value = ''
-  scrollToBottom()
+  conversations.value[activePatient.value.id].push(newMsg)
 
-  // Send to backend chat API
-  try {
-    isSending.value = true
-    await apiClient.post('/chat/send', {
-      content: `[Expert Note to ${activePatient.value.name}]: ${text}`,
-      user_id: activePatientId.value
-    })
-  } catch (e) {
-    // Local state already updated
-  } finally {
-    isSending.value = false
+  activePatient.value.lastMessage = text
+  activePatient.value.lastTime = 'Just now'
+
+  await nextTick()
+  if (chatContainer.value) {
+    chatContainer.value.scrollTop = chatContainer.value.scrollHeight
   }
+
+  isSending.value = false
+  notify("Message sent to patient.")
 }
 
-function sendQuickPrescription() {
-  const prescriptionMsg: Message = {
-    id: `msg_${Date.now()}`,
+function sendPrescription() {
+  if (!activePatient.value || activePatient.value.status === 'pending') return
+
+  const planMsg: Message = {
+    id: `m_plan_${Date.now()}`,
     sender: 'expert',
-    text: 'I have reviewed your logs and assigned a revised clinical meal plan directly to your app schedule.',
+    text: `I have updated and prescribed your 7-Day Regional Meal Plan targeting ${activePatient.value.targetCalories || 1800} kcal/day with enhanced dietary fiber and optimized micronutrients.`,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     attachment: {
       type: 'plan',
-      title: 'Clinical High-Protein Diabetic Protocol (1,750 kcal)',
-      meta: 'Prescribed by Dr. Sarah Jenkins · P: 130g | C: 150g | F: 55g'
+      title: `7-Day Clinical Diet Prescription (${activePatient.value.condition})`,
+      meta: `${activePatient.value.targetCalories || 1800} kcal · 120g Protein · ICMR-NIN Compliant`
     }
   }
-  conversations.value[activePatientId.value].push(prescriptionMsg)
-  scrollToBottom()
-  notify(`Sent clinical prescription card to ${activePatient.value.name}!`)
-}
 
-onMounted(() => {
-  scrollToBottom()
-})
+  conversations.value[activePatient.value.id].push(planMsg)
+  notify("Diet plan prescription sent directly into patient's app.")
+}
 </script>
 
 <template>
-  <div class="h-[750px] bg-canvas-raised border border-border rounded-2xl shadow-card overflow-hidden grid grid-cols-1 md:grid-cols-12">
-    <Toast v-if="showToast" :message="toastMsg" @close="showToast = false" />
+  <div class="h-[calc(100vh-8.5rem)] flex flex-col md:flex-row bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+    <Toast :show="showToast" :message="toastMsg" />
 
-    <!-- ── LEFT SIDEBAR: PATIENT ROSTER (4 cols) ─────────────────────── -->
-    <div class="md:col-span-4 border-r border-border flex flex-col h-full bg-canvas/40">
-      <!-- Search & Filter Header -->
-      <div class="p-4 border-b border-border bg-canvas-raised">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="font-display font-bold text-[1.1rem] text-ink">Patient Conversations</h2>
-          <span class="px-2 py-0.5 rounded-full text-[0.72rem] font-bold bg-primary-soft text-primary">
-            {{ patients.length }} Active
-          </span>
-        </div>
-        <div class="relative">
-          <input
-            type="text"
-            placeholder="Search patient or condition..."
-            class="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-canvas border border-border text-ink placeholder:text-ink-muted outline-none focus:border-primary transition-colors"
-          />
-          <span class="absolute left-3 top-2.5 text-ink-muted">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </span>
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- LEFT PANEL: PATIENT THREADS & CONSENT FILTER -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <div class="w-full md:w-80 lg:w-96 border-r border-border flex flex-col bg-surface-alt/40 shrink-0">
+      <!-- Search & Tab Filter -->
+      <div class="p-4 border-b border-border bg-card">
+        <h2 class="font-display font-bold text-base text-ink mb-3">Clinical Care Messaging</h2>
+        
+        <!-- Filter Tabs -->
+        <div class="grid grid-cols-2 p-1 bg-surface-alt rounded-xl border border-border text-xs font-semibold">
+          <button
+            class="py-1.5 rounded-lg transition-all"
+            :class="filterTab === 'active' ? 'bg-card text-ink shadow-xs' : 'text-ink-muted hover:text-ink'"
+            @click="filterTab = 'active'"
+          >
+            Active ({{ patients.filter(p => p.status === 'active').length }})
+          </button>
+          <button
+            class="py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5"
+            :class="filterTab === 'pending' ? 'bg-card text-ink shadow-xs' : 'text-ink-muted hover:text-ink'"
+            @click="filterTab = 'pending'"
+          >
+            Requests
+            <span v-if="pendingCount > 0" class="px-1.5 py-0.2 bg-amber-500 text-white rounded-full text-[0.65rem] font-bold">
+              {{ pendingCount }}
+            </span>
+          </button>
         </div>
       </div>
 
-      <!-- Patient Cards List -->
+      <!-- Patients List -->
       <div class="flex-1 overflow-y-auto divide-y divide-border/60">
         <div
-          v-for="p in patients"
+          v-for="p in visiblePatients"
           :key="p.id"
           @click="selectPatient(p)"
-          class="p-3.5 flex items-start gap-3 cursor-pointer transition-all hover:bg-canvas-raised"
-          :class="activePatientId === p.id ? 'bg-primary-soft/30 border-l-4 border-primary' : ''"
+          class="p-3.5 flex items-start gap-3 cursor-pointer transition-colors"
+          :class="activePatientId === p.id ? 'bg-primary/5 border-l-4 border-primary' : 'hover:bg-surface-alt/80'"
         >
           <div class="relative shrink-0">
-            <img :src="p.avatar" :alt="p.name" class="w-11 h-11 rounded-full object-cover border border-border" />
-            <span
-              v-if="p.online"
-              class="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-canvas"
-            ></span>
+            <img :src="p.avatar" class="w-11 h-11 rounded-full object-cover border border-border" alt="Avatar" />
+            <span v-if="p.online" class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-success border-2 border-card" />
           </div>
-
           <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between">
-              <h3 class="font-display font-semibold text-sm text-ink truncate">{{ p.name }}</h3>
-              <span class="font-data text-[0.7rem] text-ink-muted shrink-0">{{ p.lastTime }}</span>
+            <div class="flex items-center justify-between mb-0.5">
+              <span class="font-semibold text-sm text-ink truncate">{{ p.name }}</span>
+              <span class="text-[0.7rem] text-ink-muted font-data shrink-0">{{ p.lastTime }}</span>
             </div>
-            <div class="text-[0.72rem] font-medium text-primary mb-1">{{ p.condition }}</div>
-            <p class="font-body text-xs text-ink-muted truncate">{{ p.lastMessage }}</p>
+            <div class="text-xs text-primary font-medium truncate mb-1">{{ p.condition }}</div>
+            <p class="text-xs text-ink-muted truncate">{{ p.lastMessage }}</p>
           </div>
-
-          <span
-            v-if="p.unreadCount > 0"
-            class="w-5 h-5 rounded-full bg-primary text-white text-[0.68rem] font-bold flex items-center justify-center shrink-0"
-          >
+          <span v-if="p.unreadCount > 0" class="px-2 py-0.5 bg-primary text-white text-[0.7rem] font-bold rounded-full">
             {{ p.unreadCount }}
           </span>
+        </div>
+
+        <div v-if="visiblePatients.length === 0" class="p-8 text-center text-xs text-ink-muted">
+          No {{ filterTab }} patient threads at this time.
         </div>
       </div>
     </div>
 
-    <!-- ── RIGHT MAIN: CHAT ACTIVE CONVERSATION (8 cols) ─────────────── -->
-    <div class="md:col-span-8 flex flex-col h-full bg-canvas-raised">
-      <!-- Conversation Header -->
-      <div class="p-4 border-b border-border flex items-center justify-between bg-canvas/30">
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- RIGHT PANEL: ACTIVE CONVERSATION & CLINICAL CONTROLS -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <div class="flex-1 flex flex-col bg-card min-w-0">
+      
+      <!-- Thread Header -->
+      <div v-if="activePatient" class="p-4 border-b border-border flex items-center justify-between bg-card z-10 shadow-2xs">
         <div class="flex items-center gap-3">
           <div class="relative">
-            <img :src="activePatient.avatar" :alt="activePatient.name" class="w-10 h-10 rounded-full object-cover" />
-            <span
-              v-if="activePatient.online"
-              class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-success rounded-full border-2 border-canvas"
-            ></span>
+            <img :src="activePatient.avatar" class="w-10 h-10 rounded-full object-cover border border-border" alt="Active Patient" />
+            <span v-if="activePatient.online" class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-success border-2 border-card" />
           </div>
           <div>
-            <div class="flex items-center gap-2">
-              <h3 class="font-display font-bold text-base text-ink">{{ activePatient.name }}</h3>
-              <span class="px-2 py-0.5 text-[0.68rem] font-semibold rounded-full bg-success-soft text-success">
-                {{ activePatient.online ? 'Online' : 'Offline' }}
+            <div class="font-display font-semibold text-sm text-ink flex items-center gap-2">
+              {{ activePatient.name }}
+              <span
+                class="px-2 py-0.5 rounded text-[0.68rem] font-bold"
+                :class="activePatient.status === 'active' ? 'bg-success/15 text-success' : 'bg-amber-500/15 text-amber-600'"
+              >
+                {{ activePatient.status === 'active' ? 'Care Active' : 'Consent Pending' }}
               </span>
             </div>
-            <p class="font-body text-xs text-ink-muted">Clinical Track: {{ activePatient.condition }}</p>
+            <div class="text-xs text-ink-muted">{{ activePatient.condition }}</div>
           </div>
         </div>
 
-        <!-- Action Quick Tools -->
+        <!-- Header Actions -->
         <div class="flex items-center gap-2">
-          <button
-            @click="sendQuickPrescription"
-            class="px-3 py-1.5 rounded-lg border border-primary/40 bg-primary-soft text-primary font-body text-xs font-semibold hover:bg-primary/20 transition-colors flex items-center gap-1.5"
-            title="Push assigned meal protocol directly to patient chat"
+          <Button
+            v-if="activePatient.status === 'active'"
+            variant="outline"
+            size="sm"
+            @click="sendPrescription"
+            class="text-xs font-semibold gap-1.5"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            <span>Attach Plan</span>
-          </button>
+            📋 Send Meal Plan
+          </Button>
           <router-link
-            to="/expert/patients"
-            class="px-3 py-1.5 rounded-lg border border-border text-ink font-body text-xs font-semibold hover:bg-canvas transition-colors"
+            :to="`/consultation/room_${activePatient.id}`"
+            class="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary-strong transition-colors flex items-center gap-1.5"
           >
-            Patient Chart
+            📹 Start Video
           </router-link>
         </div>
       </div>
 
-      <!-- Messages Stream -->
-      <div ref="chatContainer" class="flex-1 p-5 overflow-y-auto space-y-4 bg-canvas/20">
-        <div
-          v-for="msg in currentMessages"
-          :key="msg.id"
-          class="flex flex-col"
-          :class="msg.sender === 'expert' ? 'items-end' : 'items-start'"
-        >
-          <!-- Sender Label & Timestamp -->
-          <div class="flex items-center gap-2 mb-1 px-1">
-            <span class="text-[0.7rem] font-semibold text-ink-muted">
-              {{ msg.sender === 'expert' ? 'You (Clinician)' : activePatient.name }}
-            </span>
-            <span class="text-[0.68rem] text-ink-muted font-data">{{ msg.time }}</span>
+      <!-- ── CASE A: INTAKE CONSENT REQUEST VIEW ─────────────────────────────── -->
+      <div v-if="activePatient?.status === 'pending'" class="flex-1 p-6 overflow-y-auto bg-surface-alt/20 flex flex-col justify-center max-w-xl mx-auto">
+        <div class="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-full bg-amber-500/15 text-amber-600 flex items-center justify-center font-bold text-lg">
+              🩺
+            </div>
+            <div>
+              <h3 class="font-display font-bold text-base text-ink">New Patient Intake Request</h3>
+              <p class="text-xs text-ink-muted">Review patient clinical goals before opening 2-way communication.</p>
+            </div>
           </div>
 
-          <!-- Message Bubble -->
-          <div
-            class="max-w-[78%] rounded-2xl px-4 py-2.5 text-sm font-body shadow-xs"
-            :class="msg.sender === 'expert'
-              ? 'bg-primary text-white rounded-tr-xs'
-              : 'bg-canvas-raised border border-border text-ink rounded-tl-xs'"
-          >
-            <p class="leading-relaxed whitespace-pre-wrap">{{ msg.text }}</p>
+          <div class="p-4 bg-surface-alt rounded-xl border border-border/80 text-xs text-ink leading-relaxed space-y-2 mb-6">
+            <div class="font-semibold text-ink-muted uppercase tracking-wider text-[0.68rem]">Clinical Intake Summary:</div>
+            <p>{{ activePatient.intakeSummary }}</p>
+          </div>
 
-            <!-- Attachment Card (Lab Report or Meal Plan) -->
-            <div
-              v-if="msg.attachment"
-              class="mt-2.5 p-3 rounded-xl border text-xs"
-              :class="msg.sender === 'expert'
-                ? 'bg-white/10 border-white/20 text-white'
-                : 'bg-canvas border-border text-ink'"
+          <div class="flex items-center gap-3">
+            <Button
+              variant="primary"
+              class="flex-1 text-xs font-bold"
+              @click="acceptPatientRequest(activePatient)"
             >
-              <div class="font-display font-bold text-[0.82rem] flex items-center gap-1.5 mb-0.5">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                <span>{{ msg.attachment.title }}</span>
+              ✅ Accept Patient & Open Chat
+            </Button>
+            <Button
+              variant="outline"
+              class="text-xs text-ink-muted hover:text-error"
+              @click="declinePatientRequest(activePatient)"
+            >
+              Decline
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── CASE B: ACTIVE BIDIRECTIONAL MESSAGES ────────────────────────────── -->
+      <div v-else ref="chatContainer" class="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-alt/10">
+        <div
+          v-for="m in (conversations[activePatient?.id || ''] || [])"
+          :key="m.id"
+          class="flex flex-col"
+          :class="m.sender === 'expert' ? 'items-end' : 'items-start'"
+        >
+          <div
+            class="max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-3 text-xs leading-relaxed shadow-xs"
+            :class="m.sender === 'expert' ? 'bg-primary text-white rounded-br-xs' : 'bg-card border border-border text-ink rounded-bl-xs'"
+          >
+            <p>{{ m.text }}</p>
+
+            <!-- Attachment Card -->
+            <div
+              v-if="m.attachment"
+              class="mt-2.5 p-2.5 rounded-xl border flex items-center gap-3 text-xs"
+              :class="m.sender === 'expert' ? 'bg-white/10 border-white/20 text-white' : 'bg-surface-alt border-border text-ink'"
+            >
+              <div class="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center font-bold text-sm shrink-0">
+                📊
               </div>
-              <div class="opacity-80 font-data text-[0.72rem]">{{ msg.attachment.meta }}</div>
+              <div class="overflow-hidden">
+                <div class="font-semibold truncate">{{ m.attachment.title }}</div>
+                <div class="text-[0.7rem] opacity-80 truncate">{{ m.attachment.meta }}</div>
+              </div>
+            </div>
+
+            <div class="text-[0.65rem] mt-1.5 opacity-70 text-right">
+              {{ m.time }}
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Message Input Footer -->
-      <div class="p-3.5 border-t border-border bg-canvas-raised">
-        <form @submit.prevent="sendMessage" class="flex items-center gap-2">
+      <!-- Input Area (Only active if accepted) -->
+      <div v-if="activePatient?.status === 'active'" class="p-3.5 border-t border-border bg-card">
+        <div class="flex items-center gap-2">
           <input
             v-model="inputMessage"
             type="text"
-            placeholder="Type clinical advice, dietary feedback, or follow-up note..."
-            class="flex-1 px-4 py-2.5 rounded-xl bg-canvas border border-border text-ink text-sm outline-none focus:border-primary transition-colors placeholder:text-ink-muted"
+            placeholder="Type clinical advice or meal response..."
+            class="flex-1 bg-surface-alt border border-border rounded-xl px-4 py-2.5 text-xs text-ink placeholder:text-ink-muted focus:outline-none focus:border-primary"
+            @keydown.enter="sendMessage"
           />
-          <Button type="submit" :disabled="!inputMessage.trim() || isSending" size="md">
-            {{ isSending ? 'Sending...' : 'Send' }}
+          <Button
+            variant="primary"
+            size="sm"
+            @click="sendMessage"
+            :disabled="!inputMessage.trim() || isSending"
+            class="px-4"
+          >
+            Send
           </Button>
-        </form>
+        </div>
       </div>
+
     </div>
   </div>
 </template>

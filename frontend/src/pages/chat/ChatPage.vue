@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import ChatBubble from '../../components/ChatBubble.vue'
 import { useResilientWebSocket } from '../../composables/useResilientWebSocket'
 
@@ -8,19 +8,27 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  attachment?: {
+    type: 'plan' | 'lab_report' | 'meal_photo'
+    title: string
+    meta?: string
+  }
 }
 
-const messages = ref<Message[]>([
+const activeTab = ref<'ai' | 'expert'>('ai')
+
+// ── Tab 1: AI Health Coach State ─────────────────────────────────────────────
+const aiMessages = ref<Message[]>([
   {
     id: '0',
     role: 'assistant',
-    content: "Hello! I'm your NutriPlan nutritionist assistant. I can help you with meal suggestions, analyse your diary, answer questions about your macros, or explain FSSAI/ICMR guidelines. How can I help you today?",
+    content: "Hello! I'm your NutriPlan AI nutritionist. I can help you with recipe ideas, analyze your food diary macros, answer questions about your target nutrients, or explain ICMR-NIN guidelines. How can I help you today?",
     timestamp: new Date(),
   }
 ])
 
-const input = ref('')
-const isTyping = ref(false)
+const aiInput = ref('')
+const isAiTyping = ref(false)
 const scrollRef = ref<HTMLElement | null>(null)
 
 const suggestions = [
@@ -43,10 +51,10 @@ const { status: wsStatus, send: wsSend, connect: wsConnect } = useResilientWebSo
   },
   onMessage: async (data: any) => {
     if (data.type === 'status') {
-      isTyping.value = true
+      isAiTyping.value = true
     } else if (data.type === 'ai_response' || data.type === 'escalation') {
-      isTyping.value = false
-      messages.value.push({
+      isAiTyping.value = false
+      aiMessages.value.push({
         id: String(Date.now()),
         role: 'assistant',
         content: data.message || data.text || 'Response received.',
@@ -61,22 +69,77 @@ const { status: wsStatus, send: wsSend, connect: wsConnect } = useResilientWebSo
   }
 })
 
+// ── Tab 2: Assigned Clinical Dietitian State & Anti-Spam Guardrails ───────────
+type ExpertConsentState = 'active' | 'pending' | 'none'
+const expertConsent = ref<ExpertConsentState>('active')
+const expertName = ref('Dr. Sarah Jenkins, RD, CDE')
+const expertTitle = ref('Clinical Dietitian · Diabetes & Metabolic Health')
+const expertAvatar = ref('https://images.unsplash.com/photo-1594824813620-1361c4de4a75?w=150&q=80')
+const officeHours = ref('Mon–Fri, 9:00 AM – 6:00 PM IST')
+const maxPendingQueue = 3 // Anti-spam turn-taking limit
+
+const expertMessages = ref<Message[]>([
+  {
+    id: 'exp-1',
+    role: 'assistant',
+    content: "Good morning! I've reviewed your metabolic panel and 7-day diary. Your fasting glucose is stabilizing nicely with the whole-grain swaps. Please share any questions you have regarding your dinner routine.",
+    timestamp: new Date(Date.now() - 3600000 * 4),
+  },
+  {
+    id: 'exp-2',
+    role: 'user',
+    content: "Dr. Sarah, I had a 15-minute brisk walk after lunch yesterday and my glucose was 114 mg/dL. Should I continue with the 45g carb cap for dinner?",
+    timestamp: new Date(Date.now() - 3600000 * 2),
+    attachment: {
+      type: 'lab_report',
+      title: 'Continuous Glucose Monitor (CGM) 24h Log',
+      meta: 'Avg: 118 mg/dL · Time in Range: 94%'
+    }
+  },
+  {
+    id: 'exp-3',
+    role: 'assistant',
+    content: "Excellent job! Yes, stick to the 45g complex carb target for dinner, and prioritize fiber-rich veggies (like steamed palak or bhindi) first on your plate to further blunt any post-meal excursion.",
+    timestamp: new Date(Date.now() - 3600000),
+  }
+])
+
+const expertInput = ref('')
+const isExpertTyping = ref(false)
+
+// Calculate unanswered consecutive patient messages (turn-taking anti-spam quota)
+const pendingPatientQuestions = computed(() => {
+  let count = 0
+  for (let i = expertMessages.value.length - 1; i >= 0; i--) {
+    if (expertMessages.value[i].role === 'user') {
+      count++
+    } else {
+      break
+    }
+  }
+  return count
+})
+
+const isQueueLimitReached = computed(() => {
+  return pendingPatientQuestions.value >= maxPendingQueue
+})
+
 onMounted(() => {
   wsConnect()
 })
 
-async function sendMessage(content?: string) {
-  const text = content || input.value.trim()
+async function sendAiMessage(content?: string) {
+  const text = content || aiInput.value.trim()
   if (!text) return
 
-  messages.value.push({
+  aiMessages.value.push({
     id: String(Date.now()),
     role: 'user',
     content: text,
     timestamp: new Date(),
   })
   
-  input.value = ''
+  aiInput.value = ''
  
   const sent = wsSend({
     message: text,
@@ -90,10 +153,9 @@ async function sendMessage(content?: string) {
   })
 
   if (!sent) {
-    // Smart assistant fallback with personalized context awareness when offline
-    isTyping.value = true
+    isAiTyping.value = true
     setTimeout(async () => {
-      isTyping.value = false
+      isAiTyping.value = false
       let reply = "Based on your recent biometric logs and dietary profile, your blood glucose levels (112 mg/dL) and daily steps (8,420) look well-balanced. Ensure you stay hydrated and hit your 120g protein target."
       
       const lower = text.toLowerCase()
@@ -103,7 +165,7 @@ async function sendMessage(content?: string) {
         reply = "To boost your daily bioavailable iron and protein, pair sprouted moong or spinach with vitamin C rich lemon juice or amla to enhance non-heme iron absorption per ICMR-NIN recommendations."
       }
 
-      messages.value.push({
+      aiMessages.value.push({
         id: String(Date.now()),
         role: 'assistant',
         content: reply,
@@ -118,97 +180,269 @@ async function sendMessage(content?: string) {
   scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight, behavior: 'smooth' })
 }
 
+async function sendExpertMessage() {
+  const text = expertInput.value.trim()
+  if (!text || isQueueLimitReached.value) return
+
+  expertMessages.value.push({
+    id: String(Date.now()),
+    role: 'user',
+    content: text,
+    timestamp: new Date(),
+  })
+  
+  expertInput.value = ''
+
+  // Simulate dietitian acknowledgement
+  isExpertTyping.value = true
+  setTimeout(async () => {
+    isExpertTyping.value = false
+    expertMessages.value.push({
+      id: String(Date.now()),
+      role: 'assistant',
+      content: "Thank you for the update! I have received your question and noted your log. I'm currently reviewing your latest meal macros and will give you a detailed dietary recommendation shortly.",
+      timestamp: new Date(),
+    })
+    await nextTick()
+    scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight, behavior: 'smooth' })
+  }, 1800)
+
+  await nextTick()
+  scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight, behavior: 'smooth' })
+}
+
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    sendMessage()
+    if (activeTab.value === 'ai') {
+      sendAiMessage()
+    } else {
+      sendExpertMessage()
+    }
   }
 }
 </script>
 
 <template>
- <div class="flex flex-col h-[calc(100vh-8rem)] -my-6">
+  <div class="flex flex-col h-[calc(100vh-8rem)] -my-6">
 
-  <!-- Header -->
-  <div class="shrink-0 pb-4 border-b border-border flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white font-display font-bold text-[0.9rem]">N</div>
-      <div>
-        <div class="font-display font-semibold text-[0.95rem] text-ink">NutriPlan AI Nutritionist</div>
-        <div class="flex items-center gap-1.5">
-          <div
-            class="w-2 h-2 rounded-full"
-            :class="wsStatus === 'connected' ? 'bg-success animate-pulse' : wsStatus === 'reconnecting' ? 'bg-amber-400 animate-spin' : 'bg-ink-muted'"
-          />
-          <span class="text-[0.72rem] text-ink-muted font-data">
-            {{ wsStatus === 'connected' ? 'Live · Multi-Agent Active' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Smart Offline Mode' }}
+    <!-- Top Mode Switcher Bar -->
+    <div class="shrink-0 pb-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <!-- Tabs -->
+      <div class="inline-flex p-1 bg-surface-alt rounded-xl border border-border">
+        <button
+          class="px-4 py-1.5 rounded-lg font-display text-xs font-semibold transition-all flex items-center gap-2"
+          :class="activeTab === 'ai' ? 'bg-card text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
+          @click="activeTab = 'ai'"
+        >
+          <span class="w-2 h-2 rounded-full" :class="wsStatus === 'connected' ? 'bg-success animate-pulse' : 'bg-amber-400'" />
+          🤖 AI Health Coach (24/7)
+        </button>
+        <button
+          class="px-4 py-1.5 rounded-lg font-display text-xs font-semibold transition-all flex items-center gap-2"
+          :class="activeTab === 'expert' ? 'bg-card text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
+          @click="activeTab = 'expert'"
+        >
+          <span class="w-2 h-2 rounded-full bg-emerald-500" />
+          🩺 Dr. Sarah Jenkins (Dietitian)
+          <span v-if="expertConsent === 'active'" class="px-1.5 py-0.2 bg-success/15 text-success rounded text-[0.65rem] font-bold">ACTIVE</span>
+        </button>
+      </div>
+
+      <!-- Context Badges -->
+      <div class="flex items-center gap-2">
+        <div v-if="activeTab === 'ai'" class="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full text-xs font-semibold text-primary">
+          🥗 {{ activeRegion.replace('in_', '').replace('_', ' ').toUpperCase() }} DIET
+        </div>
+        <div v-else class="flex items-center gap-2">
+          <span class="text-[0.72rem] text-ink-muted font-data hidden sm:inline">🕒 {{ officeHours }}</span>
+          <span
+            class="px-2.5 py-0.5 rounded-full text-[0.72rem] font-bold"
+            :class="isQueueLimitReached ? 'bg-amber-500/15 text-amber-600 border border-amber-500/30' : 'bg-primary/10 text-primary border border-primary/20'"
+          >
+            {{ pendingPatientQuestions }}/{{ maxPendingQueue }} Questions Queued
           </span>
         </div>
       </div>
     </div>
-    <div class="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full text-xs font-semibold text-primary">
-      🥗 {{ activeRegion.replace('in_', '').replace('_', ' ').toUpperCase() }} DIET
-    </div>
+
+    <!-- ═════════════════════════════════════════════════════════════════════════ -->
+    <!-- VIEW 1: AI HEALTH COACH CHAT -->
+    <!-- ═════════════════════════════════════════════════════════════════════════ -->
+    <template v-if="activeTab === 'ai'">
+      <!-- Messages area -->
+      <div ref="scrollRef" class="flex-1 overflow-y-auto py-5 space-y-4 scroll-smooth">
+        <ChatBubble
+          v-for="msg in aiMessages"
+          :key="msg.id"
+          :sender-type="msg.role === 'assistant' ? 'ai' : 'user'"
+          :sender-name="msg.role === 'assistant' ? 'NutriPlan AI' : undefined"
+          :message="msg.content"
+        />
+
+        <!-- Typing indicator -->
+        <div v-if="isAiTyping" class="flex items-end gap-2">
+          <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-[0.75rem] font-bold shrink-0">N</div>
+          <div class="bg-info-soft text-info rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce" style="animation-delay: 0ms" />
+            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce" style="animation-delay: 150ms" />
+            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce" style="animation-delay: 300ms" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Suggestions (shown when only greeting) -->
+      <div v-if="aiMessages.length === 1" class="shrink-0 py-3">
+        <p class="font-data text-[0.7rem] text-ink-muted uppercase tracking-wider mb-2">Suggested questions</p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="s in suggestions"
+            :key="s"
+            class="font-body text-[0.8rem] text-primary border border-primary/30 rounded-full px-3 py-1.5 hover:bg-primary-soft transition-colors"
+            @click="sendAiMessage(s)"
+          >{{ s }}</button>
+        </div>
+      </div>
+
+      <!-- AI Input area -->
+      <div class="shrink-0 pt-4 border-t border-border">
+        <div class="flex gap-2 items-end">
+          <textarea
+            v-model="aiInput"
+            placeholder="Ask your AI coach about macros, recipes, or ICMR targets..."
+            rows="1"
+            class="flex-1 font-body text-[0.88rem] text-ink bg-canvas-raised border border-border rounded-xl px-4 py-3 outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-ink-muted/60 max-h-32 overflow-y-auto"
+            @keydown="handleKeydown"
+          />
+          <button
+            class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong transition-colors disabled:opacity-50 active:scale-95"
+            :disabled="!aiInput.trim() || isAiTyping"
+            @click="sendAiMessage()"
+            aria-label="Send message"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+            </svg>
+          </button>
+        </div>
+        <p class="font-data text-[0.65rem] text-ink-muted mt-1.5 text-center">
+          AI responses are grounded in ICMR-NIN dietary guidelines. For medical diagnoses, consult your registered dietitian.
+        </p>
+      </div>
+    </template>
+
+    <!-- ═════════════════════════════════════════════════════════════════════════ -->
+    <!-- VIEW 2: CLINICAL DIETITIAN 2-WAY CHAT (WITH ANTI-SPAM & CONSENT) -->
+    <!-- ═════════════════════════════════════════════════════════════════════════ -->
+    <template v-else>
+      <!-- Provider Header Card -->
+      <div class="bg-card border border-border rounded-xl p-3 my-2 flex items-center justify-between shadow-xs">
+        <div class="flex items-center gap-3">
+          <img :src="expertAvatar" alt="Doctor" class="w-10 h-10 rounded-full object-cover border border-border shrink-0" />
+          <div>
+            <div class="font-display font-semibold text-sm text-ink flex items-center gap-1.5">
+              {{ expertName }}
+              <span class="w-2 h-2 rounded-full bg-success inline-block" title="Online" />
+            </div>
+            <div class="text-xs text-ink-muted">{{ expertTitle }}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <router-link to="/appointments" class="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+            📅 Book Video Session
+          </router-link>
+        </div>
+      </div>
+
+      <!-- Messages area -->
+      <div ref="scrollRef" class="flex-1 overflow-y-auto py-3 space-y-4 scroll-smooth">
+        <div
+          v-for="msg in expertMessages"
+          :key="msg.id"
+          class="flex flex-col"
+          :class="msg.role === 'user' ? 'items-end' : 'items-start'"
+        >
+          <div
+            class="max-w-[82%] sm:max-w-[70%] rounded-2xl px-4 py-3 text-[0.88rem] leading-relaxed shadow-xs"
+            :class="msg.role === 'user' ? 'bg-primary text-white rounded-br-xs' : 'bg-surface-alt border border-border text-ink rounded-bl-xs'"
+          >
+            <div v-if="msg.role === 'assistant'" class="font-bold text-[0.75rem] text-primary mb-1">
+              Dr. Sarah Jenkins
+            </div>
+            <p>{{ msg.content }}</p>
+
+            <!-- Attachment Card (Lab report or plan) -->
+            <div
+              v-if="msg.attachment"
+              class="mt-2.5 p-2.5 rounded-xl border flex items-center gap-3 text-xs"
+              :class="msg.role === 'user' ? 'bg-white/10 border-white/20 text-white' : 'bg-card border-border text-ink'"
+            >
+              <div class="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center font-bold text-base shrink-0">
+                📊
+              </div>
+              <div class="overflow-hidden">
+                <div class="font-semibold truncate">{{ msg.attachment.title }}</div>
+                <div class="text-[0.72rem] opacity-80 truncate">{{ msg.attachment.meta }}</div>
+              </div>
+            </div>
+
+            <div class="text-[0.68rem] mt-1.5 opacity-70 text-right">
+              {{ msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Provider typing indicator -->
+        <div v-if="isExpertTyping" class="flex items-end gap-2">
+          <img :src="expertAvatar" alt="Doctor" class="w-7 h-7 rounded-full object-cover shrink-0" />
+          <div class="bg-surface-alt border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms" />
+            <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms" />
+            <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 300ms" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Anti-Spam Queue Warning Notice (when 3 questions pending) -->
+      <div
+        v-if="isQueueLimitReached"
+        class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-2 flex items-center gap-3 text-xs text-amber-700 dark:text-amber-300"
+      >
+        <span class="text-base">⏳</span>
+        <div class="flex-1">
+          <span class="font-bold">Pending Dietitian Review:</span>
+          You have reached the limit of 3 unanswered clinical questions. Dr. Sarah typically reviews and replies within 4–6 hours during office hours.
+        </div>
+      </div>
+
+      <!-- Expert Input area with Rate-Limit & Spam Prevention -->
+      <div class="shrink-0 pt-2 border-t border-border">
+        <div class="flex gap-2 items-end">
+          <textarea
+            v-model="expertInput"
+            :placeholder="isQueueLimitReached ? 'Awaiting response from Dr. Sarah before sending next question...' : 'Send a message or query to Dr. Sarah...'"
+            :disabled="isQueueLimitReached || isExpertTyping"
+            rows="1"
+            class="flex-1 font-body text-[0.88rem] text-ink bg-canvas-raised border border-border rounded-xl px-4 py-3 outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-ink-muted/60 disabled:opacity-50 disabled:bg-surface-alt max-h-32 overflow-y-auto"
+            @keydown="handleKeydown"
+          />
+          <button
+            class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong transition-colors disabled:opacity-50 active:scale-95"
+            :disabled="!expertInput.trim() || isQueueLimitReached || isExpertTyping"
+            @click="sendExpertMessage()"
+            aria-label="Send message"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+            </svg>
+          </button>
+        </div>
+        <div class="flex items-center justify-between text-[0.65rem] text-ink-muted mt-1.5 px-1">
+          <span>🛡️ HIPAA-Compliant End-to-End Encrypted</span>
+          <span class="text-error font-medium">⚠️ For medical emergencies, call 112 / 911 immediately</span>
+        </div>
+      </div>
+    </template>
+
   </div>
-
- <!-- Messages area -->
- <div ref="scrollRef" class="flex-1 overflow-y-auto py-5 space-y-4 scroll-smooth">
- <ChatBubble
- v-for="msg in messages"
- :key="msg.id"
- :sender-type="msg.role === 'assistant' ? 'ai' : 'user'"
- :sender-name="msg.role === 'assistant' ? 'NutriPlan Assistant' : undefined"
- :message="msg.content"
- />
-
- <!-- Typing indicator -->
- <div v-if="isTyping" class="flex items-end gap-2">
- <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-[0.75rem] font-bold shrink-0">N</div>
- <div class="bg-info-soft text-info rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
- <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce" style="animation-delay: 0ms" />
- <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce" style="animation-delay: 150ms" />
- <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce" style="animation-delay: 300ms" />
- </div>
- </div>
- </div>
-
- <!-- Suggestions (shown when only greeting) -->
- <div v-if="messages.length === 1" class="shrink-0 py-3">
- <p class="font-data text-[0.7rem] text-ink-muted uppercase tracking-wider mb-2">Suggested questions</p>
- <div class="flex flex-wrap gap-2">
- <button
- v-for="s in suggestions"
- :key="s"
- class="font-body text-[0.8rem] text-primary border border-primary/30 rounded-full px-3 py-1.5 hover:bg-primary-soft transition-colors"
- @click="sendMessage(s)"
- >{{ s }}</button>
- </div>
- </div>
-
- <!-- Input area -->
- <div class="shrink-0 pt-4 border-t border-border">
- <div class="flex gap-2 items-end">
- <textarea
- v-model="input"
- placeholder="Ask your nutritionist..."
- rows="1"
- class="flex-1 font-body text-[0.88rem] text-ink bg-canvas-raised border border-border rounded-xl px-4 py-3 outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-ink-muted/60 max-h-32 overflow-y-auto"
- @keydown="handleKeydown"
- />
- <button
- class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong transition-colors disabled:opacity-50 active:scale-95"
- :disabled="!input.trim() || isTyping"
- @click="sendMessage()"
- aria-label="Send message"
- >
- <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
- <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
- </svg>
- </button>
- </div>
- <p class="font-data text-[0.65rem] text-ink-muted mt-1.5 text-center">
- AI responses are for informational purposes only. Consult a registered dietitian for medical advice.
- </p>
- </div>
- </div>
 </template>
