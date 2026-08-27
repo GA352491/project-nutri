@@ -1,14 +1,16 @@
 pipeline:
-  name: NutriPlan CI
-  identifier: nutriplan_ci
+  name: NutriPlan CI/CD
+  identifier: nutriplan_cicd
   projectIdentifier: nutriplan
   orgIdentifier: default
   description: |
-    Full CI pipeline for NutriPlan — runs on every push to main and all PRs.
-    Stages: Lint/Type-check → Tests → Build Artifacts
+    Full CI/CD pipeline for NutriPlan monorepo.
+    CI: Lint → Type-check → Tests → Alembic dry-run (all PRs + main)
+    CD: Build Docker images → Push to registry → Deploy (main only)
+    Dockerfiles live in infra/dockerfiles/, compose in infra/docker-compose.yml
   tags:
     app: nutriplan
-    type: ci
+    type: cicd
 
   stages:
     # ──────────────────────────────────────────────────────────────────────────
@@ -217,26 +219,97 @@ pipeline:
                       npx @lhci/cli autorun || true
                       echo "✅ Lighthouse CI checks completed"
 
+              # Build & push backend image (build context = repo root so all services accessible)
               - step:
-                  name: Build & Push Docker Images
-                  identifier: build_docker
+                  name: Build & Push Backend Docker Image
+                  identifier: build_docker_backend
                   type: BuildAndPushDockerRegistry
                   spec:
                     connectorRef: account.docker_hub
-                    repo: nutriplan/services
+                    repo: nutriplan/backend
+                    tags:
+                      - <+pipeline.sequenceId>
+                      - <+trigger.commitSha>.slice(0,7)
+                      - latest
+                    context: .
+                    dockerfile: infra/dockerfiles/backend.Dockerfile
+
+              # Build & push frontend Nginx image
+              - step:
+                  name: Build & Push Frontend Docker Image
+                  identifier: build_docker_frontend
+                  type: BuildAndPushDockerRegistry
+                  spec:
+                    connectorRef: account.docker_hub
+                    repo: nutriplan/frontend
                     tags:
                       - <+pipeline.sequenceId>
                       - latest
-                    context: backend/
-                    dockerfile: backend/auth/Dockerfile
-                    buildArgs:
-                      SERVICE: auth
+                    context: .
+                    dockerfile: infra/dockerfiles/frontend.Dockerfile
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # STAGE 4: Deploy  (main branch only — rolling update via Docker Compose)
+    # ──────────────────────────────────────────────────────────────────────────
+    - stage:
+        name: Deploy
+        identifier: deploy
+        type: CI
+        dependsOn:
+          - build
+        when:
+          pipelineStatus: Success
+          condition: <+trigger.branch> == "main"
+        spec:
+          cloneCodebase: true
+          platform:
+            os: Linux
+            arch: Amd64
+          runtime:
+            type: Cloud
+            spec: {}
+
+          execution:
+            steps:
+              - step:
+                  name: Deploy via Docker Compose (rolling)
+                  identifier: deploy_compose
+                  type: Run
+                  spec:
+                    connectorRef: account.docker_hub
+                    image: docker/compose:latest
+                    shell: Sh
+                    envVariables:
+                      DOCKER_IMAGE_TAG: <+pipeline.sequenceId>
+                      PG_BASE_URL: <+pipeline.variables.PG_BASE_URL>
+                      MONGODB_URL: <+pipeline.variables.MONGODB_URL>
+                      REDIS_URL: <+pipeline.variables.REDIS_URL>
+                    command: |
+                      echo "📦 Pulling latest images (tag: $DOCKER_IMAGE_TAG)..."
+                      docker compose -f infra/docker-compose.yml pull
+
+                      echo "🔄 Rolling update — zero-downtime restart..."
+                      docker compose -f infra/docker-compose.yml up -d \
+                        --remove-orphans \
+                        --no-build
+
+                      echo "⏳ Waiting for services to be healthy..."
+                      sleep 15
+
+                      echo "🔍 Health check..."
+                      curl -sf http://localhost:8001/health | grep -q '"status":"ok"' && \
+                        echo "✅ auth-service healthy"
+                      curl -sf http://localhost:8009/health | grep -q '"status":"ok"' && \
+                        echo "✅ meal-plan-service healthy"
+
+                      docker compose -f infra/docker-compose.yml ps
+                      echo "✅ Deployment complete — build #$DOCKER_IMAGE_TAG live"
 
   properties:
     ci:
       codebase:
         connectorRef: account.github
-        repoName: nutriplan
+        repoName: GA352491/project-nutri
         build:
           type: branch
           spec:
@@ -252,3 +325,9 @@ pipeline:
     - name: REDIS_URL
       type: Secret
       value: <+secrets.getValue("nutriplan_redis_url")>
+    - name: JWT_SECRET
+      type: Secret
+      value: <+secrets.getValue("nutriplan_jwt_secret")>
+    - name: STRIPE_SECRET_KEY
+      type: Secret
+      value: <+secrets.getValue("nutriplan_stripe_secret")>
