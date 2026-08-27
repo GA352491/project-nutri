@@ -94,6 +94,18 @@ const patients = ref<PatientContact[]>([
   },
   // Pending Consent & Intake Requests (Anti-Spam Filtered)
   {
+    id: 'usr_test',
+    name: 'Test User (test@test.com)',
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80',
+    condition: 'Metabolic Optimization & South Indian High-Protein',
+    unreadCount: 1,
+    lastMessage: 'Consultation intake request from test@test.com: Requesting South Indian diet review.',
+    lastTime: '5 mins ago',
+    online: true,
+    status: (localStorage.getItem('nutriplan_expert_consent_test@test.com') as any) || 'pending',
+    intakeSummary: 'Patient Account: test@test.com · Target: 1800 kcal / 120g Protein · South Indian Vegetarian with low oil · Primary Goal: Glucose stabilization & body recomposition.'
+  },
+  {
     id: 'usr_req_1',
     name: 'Rahul Verma',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80',
@@ -119,7 +131,7 @@ const patients = ref<PatientContact[]>([
   }
 ])
 
-const activePatientId = ref('usr_1')
+const activePatientId = ref(localStorage.getItem('nutriplan_expert_consent_test@test.com') === 'active' ? 'usr_test' : 'usr_1')
 
 const visiblePatients = computed(() => {
   return patients.value.filter(p => p.status === filterTab.value)
@@ -183,6 +195,19 @@ const conversations = ref<Record<string, Message[]>>({
       time: '3 days ago'
     }
   ],
+  usr_test: [
+    {
+      id: 'req_test_1',
+      sender: 'patient',
+      text: 'Hello Dr. Sarah (expert@nutriplan.local), I am submitting my clinical intake request. I would like your guidance on optimizing my macros for energy and fat loss with South Indian regional foods (1800 kcal / 120g Protein).',
+      time: '5 mins ago',
+      attachment: {
+        type: 'lab_report',
+        title: 'Intake Health Bio & Macro Target Form (test@test.com)',
+        meta: '1800 kcal · Fasting Glucose 114 mg/dL · 8,400 daily steps'
+      }
+    }
+  ],
   usr_req_1: [
     {
       id: 'req_m1',
@@ -211,6 +236,10 @@ function acceptPatientRequest(patient: PatientContact) {
   filterTab.value = 'active'
   activePatientId.value = patient.id
 
+  if (patient.id === 'usr_test') {
+    localStorage.setItem('nutriplan_expert_consent_test@test.com', 'active')
+  }
+
   // Add welcome clinical acknowledgment message
   if (!conversations.value[patient.id]) {
     conversations.value[patient.id] = []
@@ -218,7 +247,7 @@ function acceptPatientRequest(patient: PatientContact) {
   conversations.value[patient.id].push({
     id: `exp_acc_${Date.now()}`,
     sender: 'expert',
-    text: `Hello ${patient.name}! I have accepted your clinical consultation request and reviewed your intake details. Your 2-way clinical messaging care window is now open. How are your energy and meal timings today?`,
+    text: `Hello ${patient.name}! I (Dr. Sarah Jenkins, expert@nutriplan.local) have accepted your clinical consultation request and reviewed your health bio. Your two-way messaging channel is now active. How can I assist you with your diet plan today?`,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   })
 

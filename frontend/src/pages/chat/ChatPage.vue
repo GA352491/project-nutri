@@ -15,7 +15,7 @@ interface Message {
   }
 }
 
-const activeTab = ref<'ai' | 'expert'>('ai')
+const activeTab = ref<'ai' | 'expert'>('expert')
 
 // ── Tab 1: AI Health Coach State ─────────────────────────────────────────────
 const aiMessages = ref<Message[]>([
@@ -71,7 +71,10 @@ const { status: wsStatus, send: wsSend, connect: wsConnect } = useResilientWebSo
 
 // ── Tab 2: Assigned Clinical Dietitian State & Anti-Spam Guardrails ───────────
 type ExpertConsentState = 'active' | 'pending' | 'none'
-const expertConsent = ref<ExpertConsentState>('active')
+const expertConsent = ref<ExpertConsentState>(
+  (localStorage.getItem('nutriplan_expert_consent_test@test.com') as any) || 'pending'
+)
+const expertEmail = ref('expert@nutriplan.local')
 const expertName = ref('Dr. Sarah Jenkins, RD, CDE')
 const expertTitle = ref('Clinical Dietitian · Diabetes & Metabolic Health')
 const expertAvatar = ref('https://images.unsplash.com/photo-1594824813620-1361c4de4a75?w=150&q=80')
@@ -81,26 +84,14 @@ const maxPendingQueue = 3 // Anti-spam turn-taking limit
 const expertMessages = ref<Message[]>([
   {
     id: 'exp-1',
-    role: 'assistant',
-    content: "Good morning! I've reviewed your metabolic panel and 7-day diary. Your fasting glucose is stabilizing nicely with the whole-grain swaps. Please share any questions you have regarding your dinner routine.",
-    timestamp: new Date(Date.now() - 3600000 * 4),
-  },
-  {
-    id: 'exp-2',
     role: 'user',
-    content: "Dr. Sarah, I had a 15-minute brisk walk after lunch yesterday and my glucose was 114 mg/dL. Should I continue with the 45g carb cap for dinner?",
-    timestamp: new Date(Date.now() - 3600000 * 2),
+    content: "Hello Dr. Sarah (expert@nutriplan.local), I am submitting my clinical intake request. I would like your guidance on optimizing my macros for energy and fat loss with South Indian regional foods (1800 kcal / 120g Protein).",
+    timestamp: new Date(Date.now() - 3600000 * 3),
     attachment: {
       type: 'lab_report',
-      title: 'Continuous Glucose Monitor (CGM) 24h Log',
-      meta: 'Avg: 118 mg/dL · Time in Range: 94%'
+      title: 'Intake Health Bio & Macro Target Form (test@test.com)',
+      meta: '1800 kcal · Fasting Glucose 114 mg/dL · 8,400 daily steps'
     }
-  },
-  {
-    id: 'exp-3',
-    role: 'assistant',
-    content: "Excellent job! Yes, stick to the 45g complex carb target for dinner, and prioritize fiber-rich veggies (like steamed palak or bhindi) first on your plate to further blunt any post-meal excursion.",
-    timestamp: new Date(Date.now() - 3600000),
   }
 ])
 
@@ -124,8 +115,42 @@ const isQueueLimitReached = computed(() => {
   return pendingPatientQuestions.value >= maxPendingQueue
 })
 
+function activateConsentForTesting() {
+  expertConsent.value = 'active'
+  localStorage.setItem('nutriplan_expert_consent_test@test.com', 'active')
+  expertMessages.value.push({
+    id: `exp_welcome_${Date.now()}`,
+    role: 'assistant',
+    content: "Hello Test User! I (Dr. Sarah Jenkins, expert@nutriplan.local) have accepted your clinical consultation request and reviewed your health bio. Your two-way messaging channel is now active. How can I assist you with your diet plan today?",
+    timestamp: new Date(),
+  })
+}
+
+function resetConsentForTesting() {
+  expertConsent.value = 'pending'
+  localStorage.setItem('nutriplan_expert_consent_test@test.com', 'pending')
+  expertMessages.value = [
+    {
+      id: 'exp-1',
+      role: 'user',
+      content: "Hello Dr. Sarah (expert@nutriplan.local), I am submitting my clinical intake request. I would like your guidance on optimizing my macros for energy and fat loss with South Indian regional foods (1800 kcal / 120g Protein).",
+      timestamp: new Date(Date.now() - 3600000 * 3),
+      attachment: {
+        type: 'lab_report',
+        title: 'Intake Health Bio & Macro Target Form (test@test.com)',
+        meta: '1800 kcal · Fasting Glucose 114 mg/dL · 8,400 daily steps'
+      }
+    }
+  ]
+}
+
 onMounted(() => {
   wsConnect()
+  // Check if consent was accepted in expert portal tab
+  const savedConsent = localStorage.getItem('nutriplan_expert_consent_test@test.com')
+  if (savedConsent === 'active' && expertConsent.value !== 'active') {
+    activateConsentForTesting()
+  }
 })
 
 async function sendAiMessage(content?: string) {
@@ -182,7 +207,7 @@ async function sendAiMessage(content?: string) {
 
 async function sendExpertMessage() {
   const text = expertInput.value.trim()
-  if (!text || isQueueLimitReached.value) return
+  if (!text || isQueueLimitReached.value || expertConsent.value !== 'active') return
 
   expertMessages.value.push({
     id: String(Date.now()),
@@ -232,31 +257,55 @@ function handleKeydown(e: KeyboardEvent) {
       <div class="inline-flex p-1 bg-surface-alt rounded-xl border border-border">
         <button
           class="px-4 py-1.5 rounded-lg font-display text-xs font-semibold transition-all flex items-center gap-2"
+          :class="activeTab === 'expert' ? 'bg-card text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
+          @click="activeTab = 'expert'"
+        >
+          <span class="w-2 h-2 rounded-full" :class="expertConsent === 'active' ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'" />
+          🩺 Dr. Sarah Jenkins (Dietitian)
+          <span
+            class="px-1.5 py-0.2 rounded text-[0.65rem] font-bold"
+            :class="expertConsent === 'active' ? 'bg-success/15 text-success' : 'bg-amber-500/15 text-amber-600'"
+          >
+            {{ expertConsent === 'active' ? 'ACTIVE' : 'PENDING' }}
+          </span>
+        </button>
+        <button
+          class="px-4 py-1.5 rounded-lg font-display text-xs font-semibold transition-all flex items-center gap-2"
           :class="activeTab === 'ai' ? 'bg-card text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
           @click="activeTab = 'ai'"
         >
           <span class="w-2 h-2 rounded-full" :class="wsStatus === 'connected' ? 'bg-success animate-pulse' : 'bg-amber-400'" />
           🤖 AI Health Coach (24/7)
         </button>
-        <button
-          class="px-4 py-1.5 rounded-lg font-display text-xs font-semibold transition-all flex items-center gap-2"
-          :class="activeTab === 'expert' ? 'bg-card text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
-          @click="activeTab = 'expert'"
-        >
-          <span class="w-2 h-2 rounded-full bg-emerald-500" />
-          🩺 Dr. Sarah Jenkins (Dietitian)
-          <span v-if="expertConsent === 'active'" class="px-1.5 py-0.2 bg-success/15 text-success rounded text-[0.65rem] font-bold">ACTIVE</span>
-        </button>
       </div>
 
-      <!-- Context Badges -->
+      <!-- Context Badges & Test Helpers -->
       <div class="flex items-center gap-2">
         <div v-if="activeTab === 'ai'" class="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full text-xs font-semibold text-primary">
           🥗 {{ activeRegion.replace('in_', '').replace('_', ' ').toUpperCase() }} DIET
         </div>
         <div v-else class="flex items-center gap-2">
+          <!-- Test Mode Toggle Button -->
+          <button
+            v-if="expertConsent === 'pending'"
+            @click="activateConsentForTesting"
+            class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1"
+            title="Click to simulate expert approval"
+          >
+            ⚡ Approve Request (Test)
+          </button>
+          <button
+            v-else
+            @click="resetConsentForTesting"
+            class="px-2 py-0.5 text-ink-muted hover:text-ink border border-border rounded text-[0.7rem]"
+            title="Reset to pending request state"
+          >
+            ↺ Reset
+          </button>
+
           <span class="text-[0.72rem] text-ink-muted font-data hidden sm:inline">🕒 {{ officeHours }}</span>
           <span
+            v-if="expertConsent === 'active'"
             class="px-2.5 py-0.5 rounded-full text-[0.72rem] font-bold"
             :class="isQueueLimitReached ? 'bg-amber-500/15 text-amber-600 border border-amber-500/30' : 'bg-primary/10 text-primary border border-primary/20'"
           >
@@ -332,7 +381,7 @@ function handleKeydown(e: KeyboardEvent) {
     </template>
 
     <!-- ═════════════════════════════════════════════════════════════════════════ -->
-    <!-- VIEW 2: CLINICAL DIETITIAN 2-WAY CHAT (WITH ANTI-SPAM & CONSENT) -->
+    <!-- VIEW 2: CLINICAL DIETITIAN CHAT (WITH CONSENT & ANTI-SPAM) -->
     <!-- ═════════════════════════════════════════════════════════════════════════ -->
     <template v-else>
       <!-- Provider Header Card -->
@@ -340,9 +389,9 @@ function handleKeydown(e: KeyboardEvent) {
         <div class="flex items-center gap-3">
           <img :src="expertAvatar" alt="Doctor" class="w-10 h-10 rounded-full object-cover border border-border shrink-0" />
           <div>
-            <div class="font-display font-semibold text-sm text-ink flex items-center gap-1.5">
+            <div class="font-display font-semibold text-sm text-ink flex items-center gap-2">
               {{ expertName }}
-              <span class="w-2 h-2 rounded-full bg-success inline-block" title="Online" />
+              <span class="text-xs text-primary font-data font-normal">({{ expertEmail }})</span>
             </div>
             <div class="text-xs text-ink-muted">{{ expertTitle }}</div>
           </div>
@@ -354,94 +403,145 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
       </div>
 
-      <!-- Messages area -->
-      <div ref="scrollRef" class="flex-1 overflow-y-auto py-3 space-y-4 scroll-smooth">
-        <div
-          v-for="msg in expertMessages"
-          :key="msg.id"
-          class="flex flex-col"
-          :class="msg.role === 'user' ? 'items-end' : 'items-start'"
-        >
-          <div
-            class="max-w-[82%] sm:max-w-[70%] rounded-2xl px-4 py-3 text-[0.88rem] leading-relaxed shadow-xs"
-            :class="msg.role === 'user' ? 'bg-primary text-white rounded-br-xs' : 'bg-surface-alt border border-border text-ink rounded-bl-xs'"
-          >
-            <div v-if="msg.role === 'assistant'" class="font-bold text-[0.75rem] text-primary mb-1">
-              Dr. Sarah Jenkins
-            </div>
-            <p>{{ msg.content }}</p>
+      <!-- ── CASE A: PENDING INTAKE REQUEST STATE ────────────────────────────── -->
+      <div v-if="expertConsent === 'pending'" class="flex-1 flex flex-col justify-center items-center p-6 bg-surface-alt/30 overflow-y-auto">
+        <div class="bg-card border border-border rounded-2xl p-6 max-w-lg w-full shadow-sm text-center">
+          <div class="w-12 h-12 rounded-full bg-amber-500/15 text-amber-600 flex items-center justify-center font-bold text-xl mx-auto mb-3">
+            ⏳
+          </div>
+          <h3 class="font-display font-bold text-base text-ink mb-1">Consultation Request Pending</h3>
+          <p class="text-xs text-ink-muted mb-4">
+            Your intake request has been submitted to <span class="font-semibold text-ink">{{ expertName }}</span> (<span class="font-mono text-primary">{{ expertEmail }}</span>).
+          </p>
 
-            <!-- Attachment Card (Lab report or plan) -->
-            <div
-              v-if="msg.attachment"
-              class="mt-2.5 p-2.5 rounded-xl border flex items-center gap-3 text-xs"
-              :class="msg.role === 'user' ? 'bg-white/10 border-white/20 text-white' : 'bg-card border-border text-ink'"
+          <!-- Intake details box -->
+          <div class="p-3.5 bg-surface-alt rounded-xl border border-border/80 text-left text-xs text-ink space-y-1.5 mb-5">
+            <div class="flex justify-between">
+              <span class="text-ink-muted font-medium">Patient Account:</span>
+              <span class="font-mono font-bold text-primary">test@test.com</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-ink-muted font-medium">Target Plan:</span>
+              <span>1800 kcal · South Indian High-Protein</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-ink-muted font-medium">Fasting Blood Sugar:</span>
+              <span>114 mg/dL</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-ink-muted font-medium">Anti-Spam Status:</span>
+              <span class="text-amber-600 font-semibold">Locked until Expert Approval</span>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2.5 justify-center">
+            <button
+              @click="activateConsentForTesting"
+              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
             >
-              <div class="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center font-bold text-base shrink-0">
-                📊
-              </div>
-              <div class="overflow-hidden">
-                <div class="font-semibold truncate">{{ msg.attachment.title }}</div>
-                <div class="text-[0.72rem] opacity-80 truncate">{{ msg.attachment.meta }}</div>
-              </div>
-            </div>
-
-            <div class="text-[0.68rem] mt-1.5 opacity-70 text-right">
-              {{ msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-            </div>
-          </div>
-        </div>
-
-        <!-- Provider typing indicator -->
-        <div v-if="isExpertTyping" class="flex items-end gap-2">
-          <img :src="expertAvatar" alt="Doctor" class="w-7 h-7 rounded-full object-cover shrink-0" />
-          <div class="bg-surface-alt border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
-            <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms" />
-            <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms" />
-            <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 300ms" />
+              ✅ Approve as Dr. Sarah (Simulate Test)
+            </button>
+            <router-link
+              to="/appointments"
+              class="px-4 py-2 border border-border hover:bg-surface-alt rounded-xl text-xs font-semibold text-ink transition-colors"
+            >
+              View Available Slots
+            </router-link>
           </div>
         </div>
       </div>
 
-      <!-- Anti-Spam Queue Warning Notice (when 3 questions pending) -->
-      <div
-        v-if="isQueueLimitReached"
-        class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-2 flex items-center gap-3 text-xs text-amber-700 dark:text-amber-300"
-      >
-        <span class="text-base">⏳</span>
-        <div class="flex-1">
-          <span class="font-bold">Pending Dietitian Review:</span>
-          You have reached the limit of 3 unanswered clinical questions. Dr. Sarah typically reviews and replies within 4–6 hours during office hours.
-        </div>
-      </div>
-
-      <!-- Expert Input area with Rate-Limit & Spam Prevention -->
-      <div class="shrink-0 pt-2 border-t border-border">
-        <div class="flex gap-2 items-end">
-          <textarea
-            v-model="expertInput"
-            :placeholder="isQueueLimitReached ? 'Awaiting response from Dr. Sarah before sending next question...' : 'Send a message or query to Dr. Sarah...'"
-            :disabled="isQueueLimitReached || isExpertTyping"
-            rows="1"
-            class="flex-1 font-body text-[0.88rem] text-ink bg-canvas-raised border border-border rounded-xl px-4 py-3 outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-ink-muted/60 disabled:opacity-50 disabled:bg-surface-alt max-h-32 overflow-y-auto"
-            @keydown="handleKeydown"
-          />
-          <button
-            class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong transition-colors disabled:opacity-50 active:scale-95"
-            :disabled="!expertInput.trim() || isQueueLimitReached || isExpertTyping"
-            @click="sendExpertMessage()"
-            aria-label="Send message"
+      <!-- ── CASE B: ACTIVE TWO-WAY MESSAGING ───────────────────────────────── -->
+      <template v-else>
+        <!-- Messages area -->
+        <div ref="scrollRef" class="flex-1 overflow-y-auto py-3 space-y-4 scroll-smooth">
+          <div
+            v-for="msg in expertMessages"
+            :key="msg.id"
+            class="flex flex-col"
+            :class="msg.role === 'user' ? 'items-end' : 'items-start'"
           >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-            </svg>
-          </button>
+            <div
+              class="max-w-[82%] sm:max-w-[70%] rounded-2xl px-4 py-3 text-[0.88rem] leading-relaxed shadow-xs"
+              :class="msg.role === 'user' ? 'bg-primary text-white rounded-br-xs' : 'bg-surface-alt border border-border text-ink rounded-bl-xs'"
+            >
+              <div v-if="msg.role === 'assistant'" class="font-bold text-[0.75rem] text-primary mb-1">
+                Dr. Sarah Jenkins (expert@nutriplan.local)
+              </div>
+              <p>{{ msg.content }}</p>
+
+              <!-- Attachment Card -->
+              <div
+                v-if="msg.attachment"
+                class="mt-2.5 p-2.5 rounded-xl border flex items-center gap-3 text-xs"
+                :class="msg.role === 'user' ? 'bg-white/10 border-white/20 text-white' : 'bg-card border-border text-ink'"
+              >
+                <div class="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center font-bold text-base shrink-0">
+                  📊
+                </div>
+                <div class="overflow-hidden">
+                  <div class="font-semibold truncate">{{ msg.attachment.title }}</div>
+                  <div class="text-[0.72rem] opacity-80 truncate">{{ msg.attachment.meta }}</div>
+                </div>
+              </div>
+
+              <div class="text-[0.68rem] mt-1.5 opacity-70 text-right">
+                {{ msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Provider typing indicator -->
+          <div v-if="isExpertTyping" class="flex items-end gap-2">
+            <img :src="expertAvatar" alt="Doctor" class="w-7 h-7 rounded-full object-cover shrink-0" />
+            <div class="bg-surface-alt border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms" />
+              <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms" />
+              <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 300ms" />
+            </div>
+          </div>
         </div>
-        <div class="flex items-center justify-between text-[0.65rem] text-ink-muted mt-1.5 px-1">
-          <span>🛡️ HIPAA-Compliant End-to-End Encrypted</span>
-          <span class="text-error font-medium">⚠️ For medical emergencies, call 112 / 911 immediately</span>
+
+        <!-- Anti-Spam Queue Warning Notice (when 3 questions pending) -->
+        <div
+          v-if="isQueueLimitReached"
+          class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-2 flex items-center gap-3 text-xs text-amber-700 dark:text-amber-300"
+        >
+          <span class="text-base">⏳</span>
+          <div class="flex-1">
+            <span class="font-bold">Pending Dietitian Review:</span>
+            You have reached the limit of 3 unanswered clinical questions. Dr. Sarah typically reviews and replies within 4–6 hours during office hours.
+          </div>
         </div>
-      </div>
+
+        <!-- Expert Input area with Rate-Limit & Spam Prevention -->
+        <div class="shrink-0 pt-2 border-t border-border">
+          <div class="flex gap-2 items-end">
+            <textarea
+              v-model="expertInput"
+              :placeholder="isQueueLimitReached ? 'Awaiting response from Dr. Sarah before sending next question...' : 'Send a message or query to Dr. Sarah (expert@nutriplan.local)...'"
+              :disabled="isQueueLimitReached || isExpertTyping"
+              rows="1"
+              class="flex-1 font-body text-[0.88rem] text-ink bg-canvas-raised border border-border rounded-xl px-4 py-3 outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-ink-muted/60 disabled:opacity-50 disabled:bg-surface-alt max-h-32 overflow-y-auto"
+              @keydown="handleKeydown"
+            />
+            <button
+              class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong transition-colors disabled:opacity-50 active:scale-95"
+              :disabled="!expertInput.trim() || isQueueLimitReached || isExpertTyping"
+              @click="sendExpertMessage()"
+              aria-label="Send message"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+              </svg>
+            </button>
+          </div>
+          <div class="flex items-center justify-between text-[0.65rem] text-ink-muted mt-1.5 px-1">
+            <span>🛡️ HIPAA-Compliant End-to-End Encrypted</span>
+            <span class="text-error font-medium">⚠️ For medical emergencies, call 112 / 911 immediately</span>
+          </div>
+        </div>
+      </template>
     </template>
 
   </div>
