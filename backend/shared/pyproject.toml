@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nutriplan-shared"
+version = "0.1.0"
+description = "Shared library for NutriPlan backend services"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.1",
+    "sqlalchemy>=2.0.30",
+    "asyncpg>=0.29.0",
+    "pymongo>=4.9.0",   # Native async API via AsyncMongoClient (motor deprecated)
+    "beanie>=1.26.0",
+    "redis>=5.0.4",
+    "aio-pika>=9.4.1",
+    "python-jose[cryptography]>=3.3.0",
+    "slowapi>=0.1.9",   # Rate limiting (Redis-backed or in-memory)
+    "limits>=3.6.0",    # Storage backends for slowapi
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nutriplan_shared"]

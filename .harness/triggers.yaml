@@ -1,0 +1,46 @@
+trigger:
+  name: On Push to main
+  identifier: on_push_main
+  projectIdentifier: nutriplan
+  orgIdentifier: default
+  pipelineIdentifier: nutriplan_ci
+  source:
+    type: Webhook
+    spec:
+      type: Github
+      spec:
+        type: Push
+        spec:
+          connectorRef: account.github
+          autoAbortPreviousExecutions: true
+          payloadConditions:
+            - key: targetBranch
+              operator: In
+              value: main,develop
+          headerConditions: []
+  inputSetRefs: []
+
+---
+trigger:
+  name: On Pull Request
+  identifier: on_pull_request
+  projectIdentifier: nutriplan
+  orgIdentifier: default
+  pipelineIdentifier: nutriplan_ci
+  source:
+    type: Webhook
+    spec:
+      type: Github
+      spec:
+        type: PullRequest
+        spec:
+          connectorRef: account.github
+          autoAbortPreviousExecutions: true
+          payloadConditions:
+            - key: targetBranch
+              operator: In
+              value: main,develop
+          actions:
+            - Open
+            - Reopen
+            - Synchronize

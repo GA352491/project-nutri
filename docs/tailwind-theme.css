@@ -1,0 +1,95 @@
+/* NutriPlan — Tailwind v4 theme
+   Drop this @theme block into your main CSS entry (e.g. src/style.css),
+   right after your @import "tailwindcss"; line.
+   This makes every token available as a Tailwind utility class:
+   bg-primary, text-ink-muted, font-display, rounded-lg, etc.
+   ------------------------------------------------------------------ */
+
+@import "tailwindcss";
+
+@theme {
+  /* Color */
+  --color-canvas:          #F5F7F1;
+  --color-canvas-raised:   #FFFFFF;
+  --color-ink:             #1C2620;
+  --color-ink-muted:       #5B6B5E;
+  --color-border:          #D9DED3;
+
+  --color-primary:         #2F5233;
+  --color-primary-strong:  #1F3A22;
+  --color-primary-soft:    #E4ECE1;
+
+  --color-secondary:       #E0A72E;
+  --color-secondary-soft:  #FBEBC8;
+
+  --color-success:         #3F7D4F;
+  --color-success-soft:    #E3F0E4;
+
+  --color-warning:         #C97A1D;
+  --color-warning-soft:    #FBEAD2;
+
+  --color-danger:          #B23A24;
+  --color-danger-soft:     #F6E1DB;
+
+  --color-info:            #2F6690;
+  --color-info-soft:       #E1EBF1;
+
+  /* Type */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body:    "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-data:    "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+  /* Radius (Tailwind Plus components use rounded-lg/xl by default — these override to brand shape) */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  /* Shadow */
+  --shadow-card: 0 1px 2px rgba(28,38,32,.06), 0 6px 16px rgba(28,38,32,.08);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(.4,0,.2,1);
+  --ease-out:      cubic-bezier(0,0,.2,1);
+  --ease-spring:   cubic-bezier(.34,1.56,.64,1);
+
+  --animate-duration-instant: 100ms;
+  --animate-duration-fast:    180ms;
+  --animate-duration-base:    260ms;
+  --animate-duration-ring:    700ms;
+}
+
+/* Respect reduced motion globally — one rule covers every component */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Usage once this is loaded:
+   <div class="bg-canvas text-ink font-body">
+   <h1 class="font-display text-ink text-3xl font-semibold">
+   <button class="bg-primary text-white rounded-lg shadow-card hover:bg-primary-strong">
+   <span class="font-data tabular-nums text-primary">64g</span>
+   <div class="bg-success-soft text-success rounded-md px-2 py-0.5 text-xs font-semibold">On target</div>
+
+   Importing Tailwind Plus blocks:
+   1. Paste the Vue block markup as-is.
+   2. Find/replace their default-palette classes with your tokens:
+        bg-indigo-600 / text-indigo-600   ->  bg-primary / text-primary
+        bg-white                          ->  bg-canvas-raised
+        text-gray-900 / text-gray-500     ->  text-ink / text-ink-muted
+        ring-gray-200 / border-gray-200   ->  border-border
+        rounded-xl                        ->  rounded-lg   (maps to --radius-lg above)
+   3. Leave layout utilities (flex, grid, gap-*, px-*, etc.) untouched — those aren't brand-specific.
+
+   Motion usage:
+   <button class="transition-transform duration-[100ms] ease-[var(--ease-standard)] active:scale-[0.98]">
+   <div class="transition-opacity duration-[260ms] ease-[var(--ease-out)]">          <!-- banner enter -->
+   <svg style="transition: stroke-dashoffset 700ms var(--ease-out);">                <!-- ring fill -->
+   <span class="transition-transform duration-[180ms] ease-[var(--ease-spring)]">    <!-- log checkmark, sparingly -->
+   Tailwind's `motion-safe:` / `motion-reduce:` variants also work directly against `prefers-reduced-motion`
+   if you want per-utility control instead of (or in addition to) the global override above.
+*/

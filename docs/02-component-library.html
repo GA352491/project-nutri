@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NutriPlan — Component Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --color-canvas:#F5F7F1; --color-canvas-raised:#FFFFFF; --color-ink:#1C2620; --color-ink-muted:#5B6B5E; --color-border:#D9DED3;
+    --color-primary:#2F5233; --color-primary-strong:#1F3A22; --color-primary-soft:#E4ECE1;
+    --color-secondary:#E0A72E; --color-secondary-soft:#FBEBC8;
+    --color-success:#3F7D4F; --color-success-soft:#E3F0E4;
+    --color-warning:#C97A1D; --color-warning-soft:#FBEAD2;
+    --color-danger:#B23A24; --color-danger-soft:#F6E1DB;
+    --color-info:#2F6690; --color-info-soft:#E1EBF1;
+    --font-display:'Fraunces',Georgia,serif; --font-body:'IBM Plex Sans',-apple-system,sans-serif; --font-data:'IBM Plex Mono',Consolas,monospace;
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;--space-8:64px;
+    --radius-sm:6px;--radius-md:12px;--radius-lg:20px;--radius-pill:999px;
+    --shadow-card:0 1px 2px rgba(28,38,32,.06), 0 6px 16px rgba(28,38,32,.08);
+    --ease-standard:cubic-bezier(.4,0,.2,1); --ease-out:cubic-bezier(0,0,.2,1); --ease-spring:cubic-bezier(.34,1.56,.64,1);
+    --dur-instant:100ms; --dur-fast:180ms; --dur-base:260ms; --dur-ring:900ms;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.01ms !important; transition-duration:.01ms !important;}
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--color-canvas); color:var(--color-ink); font-family:var(--font-body); line-height:1.5;}
+  .page-wrap{max-width:1100px; margin:0 auto; padding:var(--space-7) var(--space-5) var(--space-8);}
+  .eyebrow{font-family:var(--font-data); font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--color-primary); font-weight:600; margin-bottom:var(--space-2);}
+  h1.display{font-family:var(--font-display); font-weight:600; font-size:clamp(2rem,4vw,2.75rem); margin:0 0 var(--space-6);}
+
+  .layout{display:grid; grid-template-columns:380px 1fr; gap:var(--space-7); align-items:start;}
+  @media (max-width:860px){ .layout{grid-template-columns:1fr;} }
+
+  /* ---------- Phone frame with the "Today" screen ---------- */
+  .phone{
+    background:var(--color-canvas); border:1px solid var(--color-border); border-radius:28px;
+    box-shadow:var(--shadow-card); padding:var(--space-4); width:100%; max-width:380px;
+  }
+  .status-row{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:var(--space-4);}
+  .greet{font-family:var(--font-display); font-weight:600; font-size:1.3rem;}
+  .greet span{color:var(--color-ink-muted); font-family:var(--font-body); font-weight:400; font-size:.85rem; display:block;}
+
+  /* Macro ring */
+  .ring-card{
+    background:var(--color-canvas-raised); border-radius:var(--radius-lg); padding:var(--space-5);
+    box-shadow:var(--shadow-card); display:flex; align-items:center; gap:var(--space-5); margin-bottom:var(--space-4);
+    animation:card-in var(--dur-base) var(--ease-out) both;
+  }
+  .ring-wrap{position:relative; width:104px; height:104px; flex:none;}
+  .ring-wrap svg{transform:rotate(-90deg);}
+  .ring-progress{
+    stroke-dasharray:276; stroke-dashoffset:276;
+    animation:ring-fill var(--dur-ring) var(--ease-out) 150ms both;
+  }
+  @keyframes ring-fill{ to{ stroke-dashoffset:90; } }
+  @keyframes card-in{ from{ opacity:0; transform:translateY(6px);} to{ opacity:1; transform:translateY(0);} }
+  .ring-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .ring-center .kcal{font-family:var(--font-data); font-weight:700; font-size:1.35rem; font-variant-numeric:tabular-nums;}
+  .ring-center .unit{font-size:.62rem; color:var(--color-ink-muted); letter-spacing:.05em;}
+  .macro-legend{font-size:.8rem;}
+  .macro-legend .row{display:flex; align-items:center; gap:6px; margin-bottom:6px;}
+  .macro-legend .dot{width:9px; height:9px; border-radius:50%;}
+  .macro-legend .val{font-family:var(--font-data); font-weight:600; margin-left:auto; font-variant-numeric:tabular-nums;}
+
+  /* Activity adjustment banner */
+  .banner-info{
+    background:var(--color-info-soft); border:1px solid rgba(47,102,144,.25); border-radius:var(--radius-md);
+    padding:var(--space-3) var(--space-4); font-size:.85rem; margin-bottom:var(--space-4); display:flex; gap:var(--space-3); align-items:flex-start;
+    animation:banner-in var(--dur-base) var(--ease-out) 400ms both;
+  }
+  @keyframes banner-in{ from{ opacity:0; transform:translateY(-8px);} to{ opacity:1; transform:translateY(0);} }
+  .banner-info strong{color:var(--color-info); display:block; font-size:.78rem; letter-spacing:.03em; margin-bottom:2px;}
+  .banner-actions{display:flex; gap:var(--space-2); margin-top:var(--space-2);}
+  .btn-ghost{
+    font-family:var(--font-body); font-weight:600; font-size:.76rem; border:1px solid var(--color-info); color:var(--color-info);
+    background:transparent; padding:5px 10px; border-radius:var(--radius-pill); cursor:pointer;
+    transition:transform var(--dur-instant) var(--ease-standard), background var(--dur-fast) var(--ease-standard);
+  }
+  .btn-ghost:active{ transform:scale(.97); }
+  .btn-solid-info{
+    font-family:var(--font-body); font-weight:600; font-size:.76rem; border:none; color:#fff;
+    background:var(--color-info); padding:5px 12px; border-radius:var(--radius-pill); cursor:pointer;
+    transition:transform var(--dur-instant) var(--ease-standard);
+  }
+  .btn-solid-info:active{ transform:scale(.97); }
+
+  /* Meal cards / day timeline */
+  .section-label{font-family:var(--font-data); font-size:.7rem; text-transform:uppercase; letter-spacing:.1em; color:var(--color-ink-muted); margin:var(--space-4) 0 var(--space-2);}
+  .meal-card{
+    background:var(--color-canvas-raised); border-radius:var(--radius-md); box-shadow:var(--shadow-card);
+    display:flex; gap:var(--space-3); padding:var(--space-3); margin-bottom:var(--space-3); align-items:center;
+    animation:card-in var(--dur-base) var(--ease-out) both;
+  }
+  .meal-card:nth-of-type(1){ animation-delay:60ms; }
+  .meal-card:nth-of-type(2){ animation-delay:120ms; }
+  .meal-card:nth-of-type(3){ animation-delay:180ms; }
+  .meal-thumb{width:52px; height:52px; border-radius:var(--radius-sm); flex:none; background:var(--color-primary-soft);}
+  .meal-body{flex:1; min-width:0;}
+  .meal-title{font-weight:600; font-size:.92rem; margin-bottom:2px;}
+  .meal-macros{font-family:var(--font-data); font-size:.72rem; color:var(--color-ink-muted); font-variant-numeric:tabular-nums;}
+  .chip{
+    font-family:var(--font-data); font-size:.68rem; padding:2px 7px; border-radius:var(--radius-pill); font-weight:600; white-space:nowrap;
+    animation:chip-fade var(--dur-fast) var(--ease-out) both;
+  }
+  @keyframes chip-fade{ from{ opacity:0;} to{ opacity:1;} }
+  .chip-success{background:var(--color-success-soft); color:var(--color-success);}
+  .chip-warning{background:var(--color-warning-soft); color:var(--color-warning);}
+  .chip-danger{background:var(--color-danger-soft); color:var(--color-danger);}
+  .log-btn{
+    font-family:var(--font-body); font-weight:600; font-size:.75rem; border:1px solid var(--color-primary); color:var(--color-primary);
+    background:transparent; padding:6px 12px; border-radius:var(--radius-pill); cursor:pointer; flex:none;
+    transition:background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard),
+               border-color var(--dur-fast) var(--ease-standard), transform var(--dur-instant) var(--ease-standard);
+    display:inline-flex; align-items:center; gap:4px;
+  }
+  .log-btn:active{ transform:scale(.96); }
+  .log-btn.done{background:var(--color-primary); color:#fff; border-color:var(--color-primary);}
+  .log-btn .check{
+    display:inline-block; opacity:0; transform:scale(0);
+  }
+  .log-btn.done .check{
+    animation:check-pop var(--dur-fast) var(--ease-spring) 40ms both;
+  }
+  @keyframes check-pop{ to{ opacity:1; transform:scale(1);} }
+
+  /* Signature: nutrition-facts styled stat block */
+  .facts-block{
+    background:var(--color-canvas-raised); border:3px solid var(--color-ink); border-radius:var(--radius-sm);
+    padding:var(--space-4); font-family:var(--font-data); margin-bottom:var(--space-4);
+  }
+  .facts-block .facts-title{font-family:var(--font-display); font-weight:900; font-size:1.5rem; border-bottom:8px solid var(--color-ink); padding-bottom:var(--space-2); margin-bottom:var(--space-2);}
+  .facts-row{display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--color-border); font-size:.82rem;}
+  .facts-row.thick{border-bottom:4px solid var(--color-ink); font-weight:700; padding:8px 0;}
+  .facts-row .dv{color:var(--color-ink-muted);}
+  .facts-row.indent{padding-left:var(--space-4); color:var(--color-ink-muted);}
+
+  /* Grocery list item */
+  .grocery-item{display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) 0; border-bottom:1px solid var(--color-border); font-size:.88rem;}
+  .checkbox{width:18px; height:18px; border:2px solid var(--color-border); border-radius:5px; flex:none;}
+  .checkbox.checked{background:var(--color-primary); border-color:var(--color-primary); position:relative;}
+  .grocery-section{font-family:var(--font-data); font-size:.7rem; color:var(--color-ink-muted); text-transform:uppercase; letter-spacing:.08em; margin:var(--space-3) 0 var(--space-1);}
+
+  /* Right column: components list */
+  .panel{background:var(--color-canvas-raised); border-radius:var(--radius-lg); padding:var(--space-5); box-shadow:var(--shadow-card); margin-bottom:var(--space-5);
+    transition:box-shadow var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
+  }
+  .panel:hover{ box-shadow:0 2px 4px rgba(28,38,32,.08), 0 10px 22px rgba(28,38,32,.10); transform:translateY(-1px); }
+  .panel h3{font-family:var(--font-display); font-weight:600; font-size:1.1rem; margin:0 0 var(--space-4);}
+
+  /* Chat bubbles */
+  .chat-row{display:flex; margin-bottom:var(--space-3);}
+  .chat-row.right{justify-content:flex-end;}
+  .bubble{max-width:78%; padding:var(--space-3) var(--space-4); border-radius:var(--radius-lg); font-size:.88rem;}
+  .bubble-ai{background:var(--color-info-soft); border-bottom-left-radius:4px;}
+  .bubble-ai .tag{color:var(--color-info); font-family:var(--font-data); font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; margin-bottom:3px;}
+  .bubble-human{background:var(--color-secondary-soft); border-bottom-left-radius:4px;}
+  .bubble-human .tag{color:#96650f; font-family:var(--font-data); font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; margin-bottom:3px;}
+  .bubble-user{background:var(--color-primary); color:#fff; border-bottom-right-radius:4px;}
+
+  /* Appointment slot picker */
+  .slot-row{display:flex; gap:var(--space-2); flex-wrap:wrap;}
+  .slot{
+    font-family:var(--font-data); font-size:.8rem; border:1px solid var(--color-border); border-radius:var(--radius-md);
+    padding:8px 14px; cursor:pointer; background:var(--color-canvas-raised);
+  }
+  .slot.selected{background:var(--color-primary); color:#fff; border-color:var(--color-primary);}
+
+  /* Buttons */
+  .btn-row{display:flex; gap:var(--space-3); flex-wrap:wrap;}
+  .btn{font-family:var(--font-body); font-weight:600; font-size:.88rem; border-radius:var(--radius-pill); padding:10px 20px; cursor:pointer; border:none;}
+  .btn-primary{background:var(--color-primary); color:#fff;}
+  .btn-secondary{background:var(--color-secondary); color:var(--color-ink);}
+  .btn-outline{background:transparent; border:1.5px solid var(--color-primary); color:var(--color-primary);}
+  .btn-danger{background:var(--color-danger); color:#fff;}
+
+  code.inline{font-family:var(--font-data); font-size:.78rem; background:var(--color-canvas); padding:2px 6px; border-radius:4px; color:var(--color-primary);}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="eyebrow">NutriPlan · Component Library · v1</div>
+  <h1 class="display">Tokens, applied.</h1>
+
+  <div class="layout">
+
+    <!-- LEFT: phone mock of the Today screen -->
+    <div class="phone">
+      <div class="status-row">
+        <div class="greet">Good morning, Anish<span>Tuesday, Aug 19</span></div>
+      </div>
+
+      <div class="ring-card">
+        <div class="ring-wrap">
+          <svg width="104" height="104" viewBox="0 0 104 104">
+            <circle cx="52" cy="52" r="44" fill="none" stroke="#D9DED3" stroke-width="10"/>
+            <circle class="ring-progress" cx="52" cy="52" r="44" fill="none" stroke="#2F5233" stroke-width="10" stroke-linecap="round"/>
+          </svg>
+          <div class="ring-center"><span class="kcal">1,340</span><span class="unit">kcal left</span></div>
+        </div>
+        <div class="macro-legend">
+          <div class="row"><span class="dot" style="background:var(--color-primary)"></span>Protein<span class="val">64/90g</span></div>
+          <div class="row"><span class="dot" style="background:var(--color-secondary)"></span>Carbs<span class="val">120/210g</span></div>
+          <div class="row"><span class="dot" style="background:var(--color-info)"></span>Fat<span class="val">28/60g</span></div>
+        </div>
+      </div>
+
+      <div class="banner-info">
+        <div>
+          <strong>Plan adjusted from your workout</strong>
+          45-min run detected via Health Connect — dinner target raised +180 kcal / +12g protein.
+          <div class="banner-actions">
+            <button class="btn-solid-info">Accept</button>
+            <button class="btn-ghost">Keep original</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">Breakfast</div>
+      <div class="meal-card">
+        <div class="meal-thumb"></div>
+        <div class="meal-body">
+          <div class="meal-title">Moong dal chilla + curd <span class="chip chip-success">On target</span></div>
+          <div class="meal-macros">380 kcal · P 22g · C 40g · F 12g</div>
+        </div>
+        <button class="log-btn done"><span class="check">✓</span> Logged</button>
+      </div>
+
+      <div class="section-label">Lunch <span style="text-transform:none; font-weight:400; color:var(--color-ink-muted);">— tap Log</span></div>
+      <div class="meal-card">
+        <div class="meal-thumb"></div>
+        <div class="meal-body">
+          <div class="meal-title">Grilled chicken bowl <span class="chip chip-warning">Swap available</span></div>
+          <div class="meal-macros">520 kcal · P 41g · C 48g · F 16g</div>
+        </div>
+        <button class="log-btn" onclick="this.classList.add('done'); this.innerHTML='<span class=\'check\'>✓</span> Logged';">Log</button>
+      </div>
+
+      <div class="section-label">Snack</div>
+      <div class="meal-card">
+        <div class="meal-thumb"></div>
+        <div class="meal-body">
+          <div class="meal-title">Roasted chana <span class="chip chip-danger">Contains: peanut trace</span></div>
+          <div class="meal-macros">140 kcal · P 8g · C 18g · F 4g</div>
+        </div>
+        <button class="log-btn">Log</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: individual components -->
+    <div>
+
+      <div class="panel">
+        <h3>Signature: nutrition-facts stat block</h3>
+        <div class="facts-block">
+          <div class="facts-title">Today's Totals</div>
+          <div class="facts-row thick"><span>Calories</span><span>1,860</span></div>
+          <div class="facts-row"><span>Protein</span><span>64g <span class="dv">71% DV</span></span></div>
+          <div class="facts-row indent"><span>— from dairy</span><span>18g</span></div>
+          <div class="facts-row"><span>Carbohydrates</span><span>120g <span class="dv">57% DV</span></span></div>
+          <div class="facts-row"><span>Fat</span><span>28g <span class="dv">47% DV</span></span></div>
+          <div class="facts-row"><span>Iron</span><span>9mg <span class="dv">50% DV</span></span></div>
+          <div class="facts-row"><span>Vitamin D</span><span>2μg <span class="dv">10% DV</span></span></div>
+        </div>
+        <p style="font-size:.8rem; color:var(--color-ink-muted); margin:0;">
+          Recolored, brand-native version of the familiar FDA/FSSAI nutrition label — thick rule lines, right-aligned tabular numbers, %DV column. This motif reappears anywhere a nutrient total is shown.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h3>Chat — AI vs. human nutritionist</h3>
+        <div class="chat-row"><div class="bubble bubble-ai"><div class="tag">AI Assistant</div>General nutrition info, grounded in your logs — not medical advice.</div></div>
+        <div class="chat-row right"><div class="bubble bubble-user">Is this snack okay for my dinner macros?</div></div>
+        <div class="chat-row"><div class="bubble bubble-human"><div class="tag">Priya · Nutritionist</div>Yes, and I've adjusted tomorrow's plan for your appointment.</div></div>
+      </div>
+
+      <div class="panel">
+        <h3>Appointment slot picker</h3>
+        <div class="slot-row">
+          <div class="slot">10:00 AM</div>
+          <div class="slot selected">11:30 AM</div>
+          <div class="slot">2:00 PM</div>
+          <div class="slot">4:30 PM</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Grocery list</h3>
+        <div class="grocery-section">Produce</div>
+        <div class="grocery-item"><div class="checkbox checked"></div>Spinach — 200g</div>
+        <div class="grocery-item"><div class="checkbox"></div>Tomatoes — 4</div>
+        <div class="grocery-section">Protein</div>
+        <div class="grocery-item"><div class="checkbox"></div>Chicken breast — 500g</div>
+        <div class="grocery-item"><div class="checkbox checked"></div>Moong dal — 250g</div>
+      </div>
+
+      <div class="panel">
+        <h3>Buttons</h3>
+        <div class="btn-row">
+          <button class="btn btn-primary">Log meal</button>
+          <button class="btn btn-secondary">Swap meal</button>
+          <button class="btn btn-outline">View recipe</button>
+          <button class="btn btn-danger">Remove</button>
+        </div>
+        <p style="font-size:.8rem; color:var(--color-ink-muted); margin-top:var(--space-4);">
+          Primary = moss green <code class="inline">#2F5233</code> · Secondary = turmeric <code class="inline">#E0A72E</code> · Danger = chili clay <code class="inline">#B23A24</code>
+        </p>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

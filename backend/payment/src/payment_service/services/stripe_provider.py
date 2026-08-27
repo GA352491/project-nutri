@@ -1,0 +1,149 @@
+"""
+Stripe integration for NutriPlan Payment Service.
+
+Uses the official stripe-python SDK. Reads STRIPE_SECRET_KEY from the environment.
+For local development the key is loaded from the root project .env file automatically.
+"""
+import os
+from pathlib import Path
+from typing import Optional
+import stripe
+
+# Load root .env so STRIPE_SECRET_KEY is available regardless of how the service is started
+_root_env = Path(__file__).parents[5] / ".env"
+if _root_env.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=_root_env, override=False)
+    except ImportError:
+        pass  # python-dotenv not available — rely on shell environment
+
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+PLATFORM_FEE_PERCENT = float(os.getenv("PLATFORM_FEE_PERCENT", "0.20"))  # 20%
+
+stripe.api_key = STRIPE_SECRET_KEY
+
+
+class StripeProvider:
+    """
+    Handles interactions with the Stripe API.
+    Manages Stripe Connect accounts for nutritionists and payment intents for bookings.
+    """
+
+    # ---------------------------------------------------------------------------
+    # Stripe Connect — nutritionist onboarding
+    # ---------------------------------------------------------------------------
+
+    def create_connect_account(self, nutritionist_id: str, email: str = "") -> str:
+        """
+        Creates an Express connected account for a nutritionist.
+        Returns the Stripe account ID (acct_...).
+        """
+        params: dict = {
+            "type": "express",
+            "capabilities": {
+                "card_payments": {"requested": True},
+                "transfers": {"requested": True},
+            },
+            "metadata": {"nutritionist_id": nutritionist_id},
+        }
+        if email:
+            params["email"] = email
+
+        account = stripe.Account.create(**params)
+        return account.id
+
+    def generate_account_link(self, account_id: str, refresh_url: str = "", return_url: str = "") -> str:
+        """
+        Generates the hosted onboarding URL where the nutritionist enters bank details.
+        """
+        base = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        link = stripe.AccountLink.create(
+            account=account_id,
+            refresh_url=refresh_url or f"{base}/expert/onboard?refresh=1",
+            return_url=return_url or f"{base}/expert/onboard?success=1",
+            type="account_onboarding",
+        )
+        return link.url
+
+    # ---------------------------------------------------------------------------
+    # Payment Intents — booking checkout
+    # ---------------------------------------------------------------------------
+
+    def create_payment_intent(
+        self,
+        amount_usd: float,
+        nutritionist_account_id: str,
+        metadata: dict | None = None,
+    ) -> dict:
+        """
+        Creates a PaymentIntent for a booking.
+        When a real Stripe Connect account is provided (acct_ prefix, not a placeholder),
+        uses a destination charge so Stripe routes (1 - PLATFORM_FEE_PERCENT) directly
+        to the nutritionist's connected account.
+        In local dev (placeholder account ID), creates a plain PaymentIntent.
+        """
+        amount_cents = int(round(amount_usd * 100))
+        fee_cents = int(round(amount_cents * PLATFORM_FEE_PERCENT))
+
+        # Detect a real Stripe Connect account vs. dev placeholder
+        is_real_connect_account = (
+            nutritionist_account_id
+            and nutritionist_account_id.startswith("acct_")
+            and "placeholder" not in nutritionist_account_id
+            and "test_" not in nutritionist_account_id
+        )
+
+        params: dict = {
+            "amount": amount_cents,
+            "currency": "usd",
+            "payment_method_types": ["card"],
+            "metadata": metadata or {},
+        }
+        if is_real_connect_account:
+            params["application_fee_amount"] = fee_cents
+            params["transfer_data"] = {"destination": nutritionist_account_id}
+
+        intent = stripe.PaymentIntent.create(**params)
+        return {
+            "client_secret": intent.client_secret,
+            "payment_intent_id": intent.id,
+            "amount": intent.amount,
+            "application_fee_amount": fee_cents if is_real_connect_account else 0,
+            "transfer_data": {"destination": nutritionist_account_id} if is_real_connect_account else None,
+            "currency": intent.currency,
+            "connect_mode": "platform_split" if is_real_connect_account else "direct_dev",
+        }
+
+    def create_setup_intent(self, customer_id: Optional[str] = None, metadata: dict | None = None) -> dict:
+        """
+        Creates a SetupIntent for subscription free trials (card pre-authorization without upfront charge).
+        """
+        params: dict = {
+            "payment_method_types": ["card"],
+            "metadata": metadata or {},
+        }
+        if customer_id:
+            params["customer"] = customer_id
+        
+        intent = stripe.SetupIntent.create(**params)
+        return {
+            "client_secret": intent.client_secret,
+            "setup_intent_id": intent.id,
+            "status": intent.status
+        }
+
+    # ---------------------------------------------------------------------------
+    # Webhooks
+    # ---------------------------------------------------------------------------
+
+    def construct_webhook_event(self, payload: bytes, sig_header: str):
+        """
+        Validates the Stripe-Signature header and returns the parsed event.
+        Raises stripe.error.SignatureVerificationError on failure.
+        """
+        return stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+
+
+stripe_provider = StripeProvider()

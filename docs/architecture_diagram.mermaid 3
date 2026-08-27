@@ -1,0 +1,123 @@
+graph TB
+    Member((Member / Person))
+    Nutritionist((Nutritionist / Person))
+    Admin((Admin / Person))
+
+    subgraph UI["UI Layer"]
+        WebApp["Web App<br/>[Container: Vue 3, Vite, Pinia]"]
+        MobileApp["Mobile App<br/>[Container: Flutter (or React Native)]"]
+    end
+
+    Gateway["API Gateway<br/>[Kong / FastAPI Gateway]<br/>JWT validation, routing"]
+    Auth["Auth Service<br/>[Keycloak]"]
+
+    subgraph Core["Core Domain Services (FastAPI, Python)"]
+        Profile["Profile & Onboarding Service"]
+        Compliance["Compliance / Reference-Data Service<br/>(FSSAI/ICMR-NIN, USDA/FDA - pluggable per country)"]
+        RecipeDB["Recipe & Food DB Service"]
+        PlanGen["Meal Plan Generation Service<br/>(Curated + Generative modes)"]
+        Grocery["Grocery List Service"]
+        FoodRecog["Food Recognition Service<br/>(image -> macros/micros)"]
+        Wearable["Activity & Wearable Integration Service<br/>(HealthKit / Health Connect / Fitbit / Garmin)"]
+        Diary["Nutrition Logging / Diary Service"]
+        NutriDir["Nutritionist Directory & Matching"]
+        Chat["Chat/Messaging Service"]
+        AIChat["AI Chatbot Service (RAG)"]
+        Appt["Appointment/Scheduling Service"]
+        Video["Video Consultation Service<br/>(Jitsi)"]
+        Sub["Subscription Service"]
+        Pay["Payment Service<br/>(abstracted interface)"]
+        Delivery["Delivery/Logistics Service"]
+        Notif["Notification Service"]
+        Analytics["Analytics/Reporting Service"]
+    end
+
+    subgraph Data["Data & Infra"]
+        PG[("PostgreSQL<br/>profiles, plans, subs, appts")]
+        Mongo[("MongoDB<br/>recipe/food DB")]
+        RedisC[("Redis<br/>plan cache, sessions")]
+        Vector[("pgvector / Qdrant<br/>RAG embeddings")]
+        MinIOs[("MinIO<br/>photos, images")]
+        MQ{{"RabbitMQ / Redis Streams<br/>events"}}
+    end
+
+    subgraph AI["AI / ML"]
+        LLM["Self-hosted LLM<br/>Ollama/vLLM (Llama/Mistral class)"]
+        FoodModel["Food recognition model<br/>TorchServe/ONNX"]
+    end
+
+    subgraph External["External / Country Data Sources"]
+        USDA["USDA FoodData Central"]
+        IFCT["IFCT / ICMR-NIN (India)"]
+        DeliveryPartner["Regional Delivery Partner APIs"]
+        PaymentProvider["Payment Gateway (future, non-OSS)"]
+        HealthOS["HealthKit / Health Connect<br/>(on-device OS layer)"]
+        Bands["Fitbit / Garmin / Google Fit Cloud APIs"]
+    end
+
+    Member -->|Uses| WebApp
+    Member -->|Uses, incl. photo capture| MobileApp
+    Nutritionist -->|Uses| WebApp
+    Admin -->|Manages| WebApp
+
+    WebApp -->|JSON/HTTPS| Gateway
+    MobileApp -->|JSON/HTTPS + WebSocket| Gateway
+    Gateway -->|Validate JWT| Auth
+    Gateway --> Profile
+    Gateway --> PlanGen
+    Gateway --> RecipeDB
+    Gateway --> Grocery
+    Gateway --> FoodRecog
+    Gateway --> Diary
+    Gateway --> NutriDir
+    Gateway --> Chat
+    Gateway --> AIChat
+    Gateway --> Appt
+    Gateway --> Video
+    Gateway --> Sub
+    Gateway --> Pay
+    Gateway --> Delivery
+    Gateway --> Analytics
+
+    Profile -->|profile.updated event| MQ
+    MQ --> PlanGen
+    PlanGen -->|Read rules| Compliance
+    PlanGen -->|Query recipes| RecipeDB
+    PlanGen -->|Generative mode| LLM
+    PlanGen -->|Cache plan| RedisC
+    PlanGen --> PG
+    Grocery -->|Diff plan vs pantry| PlanGen
+
+    FoodRecog -->|Infer| FoodModel
+    FoodRecog -->|Store image| MinIOs
+    FoodRecog -->|Log entry| Diary
+    Diary -->|meal.logged event| MQ
+    MQ --> Analytics
+    MQ --> PlanGen
+
+    AIChat -->|Retrieve| Vector
+    AIChat -->|Generate| LLM
+    Chat --> AIChat
+
+    Appt --> Notif
+    Appt --> Video
+    NutriDir --> Chat
+    NutriDir --> Appt
+
+    Sub --> Pay
+    Pay -.->|future, non-OSS| PaymentProvider
+    Delivery --> DeliveryPartner
+
+    Compliance --> USDA
+    Compliance --> IFCT
+
+    MobileApp -->|reads activity| HealthOS
+    Wearable -->|activity.synced| HealthOS
+    Wearable -->|cloud sync| Bands
+    Wearable -->|tdee.updated event| MQ
+    MQ --> PlanGen
+
+    RecipeDB --> Mongo
+    Diary --> PG
+    Sub --> PG
+    Appt --> PG

@@ -1,0 +1,91 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "NutriPlan Unified API Gateway",
+    "description": "Central Documentation & Microservices Directory Portal",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Get Aggregated Openapi",
+        "description": "Aggregated OpenAPI JSON from all running microservices.",
+        "operationId": "get_aggregated_openapi_openapi_json_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/services": {
+      "get": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Get Services",
+        "description": "List all registered microservices and their live health status.",
+        "operationId": "get_services_services_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Portal Dashboard",
+        "description": "Landing portal displaying service cards and direct documentation links.",
+        "operationId": "portal_dashboard__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+# NutriPlan Backend — Shared Requirements
+# All packages are open-source and free to use locally
+
+# ── Web Framework ──────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# ── AI / LLM ───────────────────────────────────────────
+pydantic-ai>=0.0.14           # Structured LLM extraction (local Ollama compatible)
+langgraph>=0.2.0              # Multi-agent stateful workflows
+langchain-core>=0.3.0         # LangChain primitives used by LangGraph
+guardrails-ai>=0.5.0          # LLM output safety validators (toxicity, PII)
+
+# ── Event-Driven / Messaging ───────────────────────────
+faststream[redis]>=0.5.0      # Async event broker (Redis Streams, local)
+redis>=5.0.0                  # Redis client
+
+# ── Durable Workflows ──────────────────────────────────
+temporalio>=1.7.0             # Temporal SDK (connects to local Temporal server)
+
+# ── Data & Validation ──────────────────────────────────
+pydantic>=2.7.0
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.9        # PostgreSQL driver (local Postgres)
+pymongo>=4.9.0                # MongoDB async driver — AsyncMongoClient (motor deprecated)
+pgvector>=0.3.0               # Vector similarity search (RAG)
+
+# ── Security / Compliance ──────────────────────────────
+cryptography>=42.0.0          # HIPAA encryption (Fernet/AES)
+python-jose[cryptography]>=3.3.0  # JWT auth tokens
+passlib[bcrypt]>=1.7.4        # Password hashing
+
+# ── HTTP Client (inter-service calls) ─────────────────
+httpx>=0.27.0
+
+# ── Testing ────────────────────────────────────────────
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx>=0.27.0                 # Used by TestClient

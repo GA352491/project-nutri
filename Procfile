@@ -1,0 +1,21 @@
+frontend:      cd frontend && npm run dev
+auth:          cd backend/auth && uvicorn src.auth_service.main:app --port 8001 --reload
+compliance:    cd backend/compliance && uvicorn src.compliance_service.main:app --port 8002 --reload
+profile:       cd backend/profile && uvicorn src.profile_service.main:app --port 8003 --reload
+recipe:        cd backend/recipe && uvicorn src.recipe_service.main:app --port 8004 --reload
+diary:         cd backend/diary && uvicorn src.diary_service.main:app --port 8005 --reload
+grocery:       cd backend/grocery && uvicorn src.grocery_service.main:app --port 8006 --reload
+subscriptions: cd backend/subscriptions && uvicorn src.subscription_service.main:app --port 8007 --reload
+meal_plan:     cd backend/meal_plan && uvicorn src.meal_plan_service.main:app --port 8009 --reload
+notifications: cd backend/notifications && uvicorn src.notification_service.main:app --port 8010 --reload
+food_recog:    cd backend/food_recognition && uvicorn src.food_recognition_service.main:app --port 8011 --reload
+chat:          cd backend/chat && uvicorn src.chat_service.main:app --port 8012 --reload
+appointment:   cd backend/appointment && uvicorn src.appointment_service.main:app --port 8013 --reload
+video:         cd backend/video && uvicorn src.video_service.main:app --port 8014 --reload
+ai_chatbot:    cd backend/ai_chatbot && uvicorn src.chatbot_service.main:app --port 8015 --reload
+payment:       cd backend/payment && uvicorn src.payment_service.main:app --port 8016 --reload
+delivery:      cd backend/delivery && uvicorn src.delivery_service.main:app --port 8017 --reload
+wearable:      cd backend/wearable && uvicorn src.wearable_service.main:app --port 8018 --reload
+analytics:     cd backend/analytics && uvicorn src.analytics_service.main:app --port 8019 --reload
+admin:         cd backend/admin && uvicorn src.admin_service.main:app --port 8020 --reload
+marketplace:   cd backend/marketplace && uvicorn src.marketplace_service.main:app --port 8025 --reload

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NutriPlan — Design Tokens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ---- Color tokens ---- */
+    --color-canvas:        #F5F7F1;
+    --color-canvas-raised: #FFFFFF;
+    --color-ink:           #1C2620;
+    --color-ink-muted:     #5B6B5E;
+    --color-border:        #D9DED3;
+
+    --color-primary:       #2F5233;
+    --color-primary-strong:#1F3A22;
+    --color-primary-soft:  #E4ECE1;
+
+    --color-secondary:     #E0A72E;
+    --color-secondary-soft:#FBEBC8;
+
+    --color-success:       #3F7D4F;
+    --color-success-soft:  #E3F0E4;
+
+    --color-warning:       #C97A1D;
+    --color-warning-soft:  #FBEAD2;
+
+    --color-danger:        #B23A24;
+    --color-danger-soft:   #F6E1DB;
+
+    --color-info:          #2F6690;
+    --color-info-soft:     #E1EBF1;
+
+    /* ---- Type tokens ---- */
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-body:    'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-data:    'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+
+    /* ---- Spacing tokens (4px base) ---- */
+    --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+    --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+
+    /* ---- Radius / shadow tokens ---- */
+    --radius-sm: 6px; --radius-md: 12px; --radius-lg: 20px; --radius-pill: 999px;
+    --shadow-card: 0 1px 2px rgba(28,38,32,.06), 0 6px 16px rgba(28,38,32,.08);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--color-canvas); color:var(--color-ink);
+    font-family:var(--font-body); line-height:1.5; padding-bottom:var(--space-8);
+  }
+  .wrap{max-width:1040px; margin:0 auto; padding:var(--space-7) var(--space-5);}
+
+  header.page{margin-bottom:var(--space-8);}
+  .eyebrow{
+    font-family:var(--font-data); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--color-primary); font-weight:600; margin-bottom:var(--space-3);
+  }
+  h1.display{
+    font-family:var(--font-display); font-weight:600; font-size:clamp(2.25rem,5vw,3.25rem);
+    margin:0 0 var(--space-3); letter-spacing:-.01em;
+  }
+  p.lede{ max-width:640px; color:var(--color-ink-muted); font-size:1.05rem; margin:0;}
+
+  section.block{margin-bottom:var(--space-8);}
+  h2.section-title{
+    font-family:var(--font-display); font-weight:600; font-size:1.5rem; margin:0 0 var(--space-2);
+    border-bottom:1px solid var(--color-border); padding-bottom:var(--space-3);
+  }
+  p.section-note{color:var(--color-ink-muted); margin:0 0 var(--space-5); font-size:.925rem;}
+
+  /* Color swatch grid */
+  .swatch-grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:var(--space-4);
+  }
+  .swatch{
+    background:var(--color-canvas-raised); border:1px solid var(--color-border);
+    border-radius:var(--radius-md); overflow:hidden; box-shadow:var(--shadow-card);
+  }
+  .swatch .fill{height:88px;}
+  .swatch .meta{padding:var(--space-3) var(--space-4);}
+  .swatch .name{font-weight:600; font-size:.9rem; margin-bottom:2px;}
+  .swatch .role{font-size:.78rem; color:var(--color-ink-muted); margin-bottom:6px;}
+  .swatch code{
+    font-family:var(--font-data); font-size:.78rem; background:var(--color-canvas);
+    padding:2px 6px; border-radius:4px; display:inline-block;
+  }
+
+  /* Type specimens */
+  .type-row{
+    background:var(--color-canvas-raised); border:1px solid var(--color-border); border-radius:var(--radius-md);
+    padding:var(--space-5); margin-bottom:var(--space-4); box-shadow:var(--shadow-card);
+    display:grid; grid-template-columns:1fr; gap:var(--space-3);
+  }
+  .type-meta{display:flex; gap:var(--space-4); flex-wrap:wrap; align-items:baseline;}
+  .type-meta .label{font-family:var(--font-data); font-size:.78rem; color:var(--color-primary); font-weight:600;}
+  .type-meta .stack{font-family:var(--font-data); font-size:.78rem; color:var(--color-ink-muted);}
+  .display-sample{font-family:var(--font-display); font-weight:700; font-size:2.1rem; margin:0;}
+  .body-sample{font-family:var(--font-body); font-size:1.1rem; margin:0;}
+  .data-sample{font-family:var(--font-data); font-size:1.4rem; font-variant-numeric:tabular-nums; margin:0;}
+
+  table.scale{width:100%; border-collapse:collapse; font-size:.9rem;}
+  table.scale th, table.scale td{
+    text-align:left; padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--color-border);
+  }
+  table.scale th{font-family:var(--font-data); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:var(--color-ink-muted);}
+  table.scale td.sample{font-family:var(--font-display); font-weight:600;}
+  table.scale code{font-family:var(--font-data); font-size:.82rem; color:var(--color-primary);}
+
+  /* Spacing */
+  .space-row{display:flex; align-items:center; gap:var(--space-4); margin-bottom:var(--space-3);}
+  .space-bar{background:var(--color-secondary); height:16px; border-radius:3px;}
+  .space-row code{font-family:var(--font-data); font-size:.8rem; width:130px; color:var(--color-ink-muted);}
+
+  /* Radius */
+  .radius-grid{display:flex; gap:var(--space-4); flex-wrap:wrap;}
+  .radius-card{
+    width:120px; height:100px; background:var(--color-primary-soft); border:1px solid var(--color-border);
+    display:flex; align-items:flex-end; padding:var(--space-2);
+  }
+  .radius-card code{font-family:var(--font-data); font-size:.72rem; color:var(--color-primary-strong);}
+
+  footer.page{color:var(--color-ink-muted); font-size:.82rem; padding-top:var(--space-6); border-top:1px solid var(--color-border);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <div class="eyebrow">NutriPlan · Design Tokens · v1</div>
+    <h1 class="display">Colors &amp; type, with the codes.</h1>
+    <p class="lede">Every value on this page is the literal token used across the Vue web app and the Flutter mobile app — copy the hex or the CSS variable directly.</p>
+  </header>
+
+  <section class="block">
+    <h2 class="section-title">Color</h2>
+    <p class="section-note">Semantic tokens first — never wire raw hex into a component. Each swatch shows the CSS variable name and hex value.</p>
+    <div class="swatch-grid">
+
+      <div class="swatch"><div class="fill" style="background:var(--color-canvas)"></div>
+        <div class="meta"><div class="name">Canvas</div><div class="role">App background</div><code>--color-canvas #F5F7F1</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-canvas-raised)"></div>
+        <div class="meta"><div class="name">Canvas Raised</div><div class="role">Cards, sheets</div><code>--color-canvas-raised #FFFFFF</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-ink)"></div>
+        <div class="meta"><div class="name">Ink</div><div class="role">Primary text</div><code>--color-ink #1C2620</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-ink-muted)"></div>
+        <div class="meta"><div class="name">Ink Muted</div><div class="role">Secondary text</div><code>--color-ink-muted #5B6B5E</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-primary)"></div>
+        <div class="meta"><div class="name">Primary — Moss</div><div class="role">CTAs, active states, brand</div><code>--color-primary #2F5233</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-primary-strong)"></div>
+        <div class="meta"><div class="name">Primary Strong</div><div class="role">Pressed / hover states</div><code>--color-primary-strong #1F3A22</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-primary-soft)"></div>
+        <div class="meta"><div class="name">Primary Soft</div><div class="role">Tinted backgrounds</div><code>--color-primary-soft #E4ECE1</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-secondary)"></div>
+        <div class="meta"><div class="name">Secondary — Turmeric</div><div class="role">Accent, highlights</div><code>--color-secondary #E0A72E</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-secondary-soft)"></div>
+        <div class="meta"><div class="name">Secondary Soft</div><div class="role">Accent tint bg</div><code>--color-secondary-soft #FBEBC8</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-success)"></div>
+        <div class="meta"><div class="name">Success</div><div class="role">On-target macro, completed</div><code>--color-success #3F7D4F</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-success-soft)"></div>
+        <div class="meta"><div class="name">Success Soft</div><div class="role">Success tint bg</div><code>--color-success-soft #E3F0E4</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-warning)"></div>
+        <div class="meta"><div class="name">Warning</div><div class="role">Over/under budget</div><code>--color-warning #C97A1D</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-warning-soft)"></div>
+        <div class="meta"><div class="name">Warning Soft</div><div class="role">Warning tint bg</div><code>--color-warning-soft #FBEAD2</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-danger)"></div>
+        <div class="meta"><div class="name">Danger — Chili</div><div class="role">Allergy conflict, errors</div><code>--color-danger #B23A24</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-danger-soft)"></div>
+        <div class="meta"><div class="name">Danger Soft</div><div class="role">Danger tint bg</div><code>--color-danger-soft #F6E1DB</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-info)"></div>
+        <div class="meta"><div class="name">Info — Slate</div><div class="role">AI chat, activity sync</div><code>--color-info #2F6690</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-info-soft)"></div>
+        <div class="meta"><div class="name">Info Soft</div><div class="role">Info tint bg</div><code>--color-info-soft #E1EBF1</code></div></div>
+
+      <div class="swatch"><div class="fill" style="background:var(--color-border)"></div>
+        <div class="meta"><div class="name">Border</div><div class="role">Hairlines, dividers</div><code>--color-border #D9DED3</code></div></div>
+
+    </div>
+  </section>
+
+  <section class="block">
+    <h2 class="section-title">Typography</h2>
+    <p class="section-note">Three roles, three faces. Fraunces carries personality in headlines only; Plex Sans is the workhorse body face; Plex Mono renders every macro/micro number in tabular figures — a deliberate nod to the nutrition-label format this app is built around.</p>
+
+    <div class="type-row">
+      <div class="type-meta"><span class="label">DISPLAY</span><span class="stack">font-family: 'Fraunces', Georgia, serif — weight 600–700</span></div>
+      <p class="display-sample">Protein target reached.</p>
+    </div>
+
+    <div class="type-row">
+      <div class="type-meta"><span class="label">BODY</span><span class="stack">font-family: 'IBM Plex Sans', sans-serif — weight 400–600</span></div>
+      <p class="body-sample">Your dinner has been adjusted based on today's workout — 180 more kcal, 12g more protein.</p>
+    </div>
+
+    <div class="type-row">
+      <div class="type-meta"><span class="label">DATA</span><span class="stack">font-family: 'IBM Plex Mono', monospace — tabular-nums, weight 500–600</span></div>
+      <p class="data-sample">24g / 90g protein</p>
+    </div>
+
+    <table class="scale">
+      <tr><th>Token</th><th>Face</th><th>Size / Weight</th><th>Sample</th></tr>
+      <tr><td><code>--text-display-xl</code></td><td>Fraunces</td><td>52px / 600</td><td class="sample" style="font-size:1.6rem;">Aa</td></tr>
+      <tr><td><code>--text-h1</code></td><td>Fraunces</td><td>32px / 600</td><td class="sample" style="font-size:1.3rem;">Aa</td></tr>
+      <tr><td><code>--text-h2</code></td><td>Fraunces</td><td>24px / 600</td><td class="sample" style="font-size:1.1rem;">Aa</td></tr>
+      <tr><td><code>--text-body</code></td><td>IBM Plex Sans</td><td>16px / 400</td><td class="sample" style="font-family:var(--font-body); font-weight:400; font-size:1rem;">Aa</td></tr>
+      <tr><td><code>--text-body-sm</code></td><td>IBM Plex Sans</td><td>14px / 400</td><td class="sample" style="font-family:var(--font-body); font-weight:400; font-size:.875rem;">Aa</td></tr>
+      <tr><td><code>--text-caption</code></td><td>IBM Plex Sans</td><td>12px / 500</td><td class="sample" style="font-family:var(--font-body); font-weight:500; font-size:.75rem;">Aa</td></tr>
+      <tr><td><code>--text-numeric-lg</code></td><td>IBM Plex Mono</td><td>28px / 600, tabular</td><td class="sample" style="font-family:var(--font-data); font-weight:600; font-size:1.5rem;">42g</td></tr>
+      <tr><td><code>--text-numeric-sm</code></td><td>IBM Plex Mono</td><td>14px / 500, tabular</td><td class="sample" style="font-family:var(--font-data); font-weight:500; font-size:.875rem;">42g</td></tr>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2 class="section-title">Spacing scale</h2>
+    <p class="section-note">4px base unit. Use tokens, not arbitrary pixel values, in every component.</p>
+    <div class="space-row"><code>--space-1 · 4px</code><div class="space-bar" style="width:4px"></div></div>
+    <div class="space-row"><code>--space-2 · 8px</code><div class="space-bar" style="width:8px"></div></div>
+    <div class="space-row"><code>--space-3 · 12px</code><div class="space-bar" style="width:12px"></div></div>
+    <div class="space-row"><code>--space-4 · 16px</code><div class="space-bar" style="width:16px"></div></div>
+    <div class="space-row"><code>--space-5 · 24px</code><div class="space-bar" style="width:24px"></div></div>
+    <div class="space-row"><code>--space-6 · 32px</code><div class="space-bar" style="width:32px"></div></div>
+    <div class="space-row"><code>--space-7 · 48px</code><div class="space-bar" style="width:48px"></div></div>
+    <div class="space-row"><code>--space-8 · 64px</code><div class="space-bar" style="width:64px"></div></div>
+  </section>
+
+  <section class="block">
+    <h2 class="section-title">Radius</h2>
+    <div class="radius-grid">
+      <div class="radius-card" style="border-radius:var(--radius-sm)"><code>--radius-sm 6px</code></div>
+      <div class="radius-card" style="border-radius:var(--radius-md)"><code>--radius-md 12px</code></div>
+      <div class="radius-card" style="border-radius:var(--radius-lg)"><code>--radius-lg 20px</code></div>
+      <div class="radius-card" style="border-radius:var(--radius-pill)"><code>--radius-pill 999px</code></div>
+    </div>
+  </section>
+
+  <footer class="page">
+    See <strong>02-component-library.html</strong> for these tokens applied to real screens — meal cards, the macro ring, the nutrition-label-styled stat block, and chat.
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,57 @@
+template:
+  name: Python Service Test
+  identifier: python_service_test
+  type: Step
+  projectIdentifier: nutriplan
+  orgIdentifier: default
+  description: |
+    Reusable step template for testing any NutriPlan Python microservice.
+    Inputs: service_name, service_port, extra_deps
+  spec:
+    type: Run
+    timeout: 10m
+    spec:
+      connectorRef: account.docker_hub
+      image: python:3.12-slim
+      shell: Sh
+      command: |
+        # Install shared deps
+        pip install \
+          fastapi uvicorn httpx pytest pytest-asyncio \
+          pydantic pydantic-settings beanie pymongo \
+          python-jose[cryptography] passlib[bcrypt] \
+          --quiet
+
+        # Install shared library
+        cd backend && pip install -e shared/ --quiet
+
+        # Install target service
+        pip install -e <+spec.inputs.service_name>/ --quiet
+
+        # Install any extra deps the service needs
+        if [ -n "<+spec.inputs.extra_deps>" ]; then
+          pip install <+spec.inputs.extra_deps> --quiet
+        fi
+
+        # Run the service-specific tests
+        python -m pytest tests/test_api_<+spec.inputs.service_name>.py -v \
+          --tb=short \
+          --junitxml=test-results/<+spec.inputs.service_name>.xml
+
+        echo "✅ <+spec.inputs.service_name> tests passed"
+
+    inputs:
+      - name: service_name
+        type: String
+        description: "Service directory name (e.g. auth, marketplace, recipe)"
+        required: true
+      - name: service_port
+        type: String
+        description: "Port the service runs on (for documentation)"
+        required: false
+        default: "8000"
+      - name: extra_deps
+        type: String
+        description: "Space-separated extra pip packages"
+        required: false
+        default: ""
