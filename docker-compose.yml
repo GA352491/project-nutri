@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # ── Databases & Cache ────────────────────────────────────────────────────────
+  # ── Infrastructure (Databases & Cache) ───────────────────────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: nutriplan_postgres
@@ -46,7 +46,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Temporal Orchestration ──────────────────────────────────────────────────
+  # ── Durable Orchestration ───────────────────────────────────────────────────
   temporal:
     image: temporalio/auto-setup:latest
     container_name: nutriplan_temporal
@@ -74,6 +74,130 @@ services:
       - TEMPORAL_CORS_ORIGINS=http://localhost:8233
     depends_on:
       - temporal
+
+  # ── Core Backend Microservices ──────────────────────────────────────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nutriplan_auth_service
+    working_dir: /app/backend/auth
+    command: python -m uvicorn src.auth_service.main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/nutriplan
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  profile-service:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nutriplan_profile_service
+    working_dir: /app/backend/profile
+    command: python -m uvicorn src.profile_service.main:app --host 0.0.0.0 --port 8003
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/nutriplan
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  recipe-service:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nutriplan_recipe_service
+    working_dir: /app/backend/recipe
+    command: python -m uvicorn src.recipe_service.main:app --host 0.0.0.0 --port 8004
+    ports:
+      - "8004:8004"
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017/nutriplan
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  diary-service:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nutriplan_diary_service
+    working_dir: /app/backend/diary
+    command: python -m uvicorn src.diary_service.main:app --host 0.0.0.0 --port 8005
+    ports:
+      - "8005:8005"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/nutriplan
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  grocery-service:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nutriplan_grocery_service
+    working_dir: /app/backend/grocery
+    command: python -m uvicorn src.grocery_service.main:app --host 0.0.0.0 --port 8006
+    ports:
+      - "8006:8006"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/nutriplan
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  meal-plan-service:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nutriplan_meal_plan_service
+    working_dir: /app/backend/meal_plan
+    command: python -m uvicorn src.meal_plan_service.main:app --host 0.0.0.0 --port 8009
+    ports:
+      - "8009:8009"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/nutriplan
+      - TEMPORAL_HOST=temporal:7233
+    depends_on:
+      - temporal
+      - postgres
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nutriplan_admin_service
+    working_dir: /app/backend/admin
+    command: python -m uvicorn src.admin_service.main:app --host 0.0.0.0 --port 8020
+    ports:
+      - "8020:8020"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/nutriplan
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Frontend SPA ────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: nutriplan_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - auth-service
+      - profile-service
+      - meal-plan-service
+      - diary-service
 
 volumes:
   postgres_data:
