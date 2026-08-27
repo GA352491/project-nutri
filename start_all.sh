@@ -29,7 +29,7 @@ if [[ "${1:-}" == "--stop" ]]; then
     done < "$PID_FILE"
     rm -f "$PID_FILE"
   fi
-  for port in 7233 8233 8001 8003 8004 8005 8006 8007 8009 8010 8013 8014 8016 8017 8018 8025 5173; do
+  for port in 7233 8233 8001 8002 8003 8004 8005 8006 8007 8009 8010 8011 8012 8013 8014 8015 8016 8017 8018 8019 8020 8025 5173; do
     pid=$(lsof -ti:"$port" 2>/dev/null || true)
     [[ -n "$pid" ]] && kill $pid 2>/dev/null && ok "Released port $port" || true
   done
@@ -47,6 +47,7 @@ if [[ "${1:-}" == "--status" ]]; then
   }
   check_port "Frontend (Vite)"       5173
   check_port "Auth Service"          8001
+  check_port "Compliance Service"    8002
   check_port "Profile Service"       8003
   check_port "Recipe Service"        8004
   check_port "Diary Service"         8005
@@ -54,11 +55,16 @@ if [[ "${1:-}" == "--status" ]]; then
   check_port "Subscription Service"  8007
   check_port "Meal Plan Service"     8009
   check_port "Notification Service"  8010
+  check_port "Food Recognition"      8011
+  check_port "Chat Service"          8012
   check_port "Appointment Service"   8013
   check_port "Video Service"         8014
+  check_port "AI Chatbot Service"    8015
   check_port "Payment Service"       8016
   check_port "Delivery Service"      8017
   check_port "Wearable Service"      8018
+  check_port "Analytics Service"     8019
+  check_port "Admin Service"         8020
   check_port "Marketplace Service"   8025
   code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 "http://localhost:8233" 2>/dev/null || echo "DOWN")
   if [[ "$code" == "200" ]]; then ok "Temporal Web UI      — :8233"; else err "Temporal Web UI      — :8233"; fi
@@ -107,8 +113,9 @@ else
 fi
 
 # 2. Backend Microservices
-hdr "2/4 — Backend Microservices (16 services)"
+hdr "2/4 — Backend Microservices (20 services)"
 start_uvicorn "Auth Service"            8001  "$BACKEND/auth"            "src.auth_service.main:app"
+start_uvicorn "Compliance Service"      8002  "$BACKEND/compliance"      "src.compliance_service.main:app"
 start_uvicorn "Profile Service"         8003  "$BACKEND/profile"         "src.profile_service.main:app"
 start_uvicorn "Recipe Service"          8004  "$BACKEND/recipe"          "src.recipe_service.main:app"
 start_uvicorn "Diary Service"           8005  "$BACKEND/diary"           "src.diary_service.main:app"
@@ -117,14 +124,17 @@ start_uvicorn "Subscription Service"    8007  "$BACKEND/subscriptions"   "src.su
 start_uvicorn "Meal Plan Service"       8009  "$BACKEND/meal_plan"       "src.meal_plan_service.main:app"
 start_uvicorn "Notification Service"    8010  "$BACKEND/notifications"   "src.notification_service.main:app"
 start_uvicorn "Food Recognition"        8011  "$BACKEND/food_recognition" "src.food_recognition_service.main:app"
+start_uvicorn "Chat Service"            8012  "$BACKEND/chat"            "src.chat_service.main:app"
 start_uvicorn "Appointment Service"     8013  "$BACKEND/appointment"     "src.appointment_service.main:app"
 start_uvicorn "Video Service"           8014  "$BACKEND/video"           "src.video_service.main:app"
+start_uvicorn "AI Chatbot"              8015  "$BACKEND/ai_chatbot"      "src.chatbot_service.main:app"
 start_uvicorn "Payment Service"         8016  "$BACKEND/payment"         "src.payment_service.main:app"
 start_uvicorn "Delivery Service"        8017  "$BACKEND/delivery"        "src.delivery_service.main:app"
 start_uvicorn "Wearable Service"        8018  "$BACKEND/wearable"        "src.wearable_service.main:app"
+start_uvicorn "Analytics Service"       8019  "$BACKEND/analytics"       "src.analytics_service.main:app"
 start_uvicorn "Admin Service"           8020  "$BACKEND/admin"           "src.admin_service.main:app"
 start_uvicorn "Marketplace Service"     8025  "$BACKEND/marketplace"     "src.marketplace_service.main:app"
-ok "All 16 microservices starting..."
+ok "All 20 microservices starting..."
 
 # 3. Temporal Hub
 hdr "3/4 — Temporal Master Worker Hub"

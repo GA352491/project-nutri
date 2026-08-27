@@ -205,3 +205,4 @@ Admin	admin@nutriplan.local	Admin@123	System Administrator
 Expert / Nutritionist	expert@nutriplan.local	Expert@123	Dr. Sarah Jenkins
 Patient	patient@nutriplan.local	Patient@123	Jane Doe
 Test Member	test@test.com	Test@123	Test User
+https://app.harness.io/ng/account/P8cvPNQpT2GZZGUBp11mlA/all/orgs/default/projects/nutriplan

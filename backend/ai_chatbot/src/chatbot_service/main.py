@@ -17,4 +17,4 @@ app.include_router(chat.router, prefix="/api/v1/ai-chat", tags=["AI Chat"])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("chatbot_service.main:app", host="0.0.0.0", port=8012, reload=True)
+    uvicorn.run("chatbot_service.main:app", host="0.0.0.0", port=8015, reload=True)
