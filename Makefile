@@ -55,3 +55,28 @@ db-check:
 ci-health:
 	@echo "Checking all service health endpoints..."
 	bash scripts/ci-health-check.sh
+
+# ── Docker / Infrastructure (infra/) ─────────────────────────────────────────
+COMPOSE=docker compose -f infra/docker-compose.yml
+
+docker-up:
+	@echo "Starting all containers via Docker Compose..."
+	$(COMPOSE) up -d
+
+docker-down:
+	@echo "Stopping all containers..."
+	$(COMPOSE) down
+
+docker-build:
+	@echo "Building all Docker images..."
+	$(COMPOSE) build
+
+docker-logs:
+	$(COMPOSE) logs -f
+
+docker-ps:
+	$(COMPOSE) ps
+
+docker-infra:
+	@echo "Starting infrastructure only (Postgres, MongoDB, Redis, Temporal)..."
+	$(COMPOSE) up -d postgres mongodb redis temporal temporal-ui

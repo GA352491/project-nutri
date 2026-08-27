@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ── Infrastructure (Databases & Cache) ───────────────────────────────────────
   postgres:
@@ -78,8 +76,8 @@ services:
   # ── Core Backend Microservices ──────────────────────────────────────────────
   auth-service:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: infra/dockerfiles/backend.Dockerfile
     container_name: nutriplan_auth_service
     working_dir: /app/backend/auth
     command: python -m uvicorn src.auth_service.main:app --host 0.0.0.0 --port 8001
@@ -96,8 +94,8 @@ services:
 
   profile-service:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: infra/dockerfiles/backend.Dockerfile
     container_name: nutriplan_profile_service
     working_dir: /app/backend/profile
     command: python -m uvicorn src.profile_service.main:app --host 0.0.0.0 --port 8003
@@ -111,8 +109,8 @@ services:
 
   recipe-service:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: infra/dockerfiles/backend.Dockerfile
     container_name: nutriplan_recipe_service
     working_dir: /app/backend/recipe
     command: python -m uvicorn src.recipe_service.main:app --host 0.0.0.0 --port 8004
@@ -126,8 +124,8 @@ services:
 
   diary-service:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: infra/dockerfiles/backend.Dockerfile
     container_name: nutriplan_diary_service
     working_dir: /app/backend/diary
     command: python -m uvicorn src.diary_service.main:app --host 0.0.0.0 --port 8005
@@ -141,8 +139,8 @@ services:
 
   grocery-service:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: infra/dockerfiles/backend.Dockerfile
     container_name: nutriplan_grocery_service
     working_dir: /app/backend/grocery
     command: python -m uvicorn src.grocery_service.main:app --host 0.0.0.0 --port 8006
@@ -156,8 +154,8 @@ services:
 
   meal-plan-service:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: infra/dockerfiles/backend.Dockerfile
     container_name: nutriplan_meal_plan_service
     working_dir: /app/backend/meal_plan
     command: python -m uvicorn src.meal_plan_service.main:app --host 0.0.0.0 --port 8009
@@ -172,8 +170,8 @@ services:
 
   admin-service:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: infra/dockerfiles/backend.Dockerfile
     container_name: nutriplan_admin_service
     working_dir: /app/backend/admin
     command: python -m uvicorn src.admin_service.main:app --host 0.0.0.0 --port 8020
@@ -188,8 +186,8 @@ services:
   # ── Frontend SPA ────────────────────────────────────────────────────────────
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ..
+      dockerfile: infra/dockerfiles/frontend.Dockerfile
     container_name: nutriplan_frontend
     ports:
       - "3000:80"
