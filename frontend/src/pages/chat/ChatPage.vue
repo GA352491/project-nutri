@@ -1,272 +1,358 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import ChatBubble from '../../components/ChatBubble.vue'
 import { useResilientWebSocket } from '../../composables/useResilientWebSocket'
 
-interface Message {
+// ── Types ────────────────────────────────────────────────────────────────────
+interface Attachment {
+  type: 'plan' | 'lab_report' | 'meal_photo'
+  title: string
+  meta?: string
+}
+
+interface AiMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
-  attachment?: {
-    type: 'plan' | 'lab_report' | 'meal_photo'
-    title: string
-    meta?: string
-  }
 }
 
+interface ClinicalMessage {
+  id: string
+  room_id: string
+  sender: 'patient' | 'expert'
+  sender_email: string
+  recipient_email: string
+  text: string
+  time: string
+  timestamp: string
+  attachment?: Attachment
+}
+
+// ── Config ───────────────────────────────────────────────────────────────────
+const PATIENT_EMAIL = localStorage.getItem('nutriplan_user_email') || 'test@test.com'
+const EXPERT_EMAIL = 'expert@nutriplan.local'
+const CHAT_API = 'http://localhost:8012/api/v1/chat'
+const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+
+function getCanonicalRoomId(emailA: string, emailB: string): string {
+  return [emailA.toLowerCase(), emailB.toLowerCase()].sort().join('_')
+}
+const CLINICAL_ROOM_ID = getCanonicalRoomId(PATIENT_EMAIL, EXPERT_EMAIL)
+
+// ── State ────────────────────────────────────────────────────────────────────
 const activeTab = ref<'ai' | 'expert'>('expert')
 
-// ── Tab 1: AI Health Coach State ─────────────────────────────────────────────
-const aiMessages = ref<Message[]>([
+// Clinical thread state
+const clinicalMessages = ref<ClinicalMessage[]>([])
+const clinicalStatus = ref<'pending' | 'active' | 'declined' | 'connecting'>('connecting')
+const clinicalInput = ref('')
+const isExpertTyping = ref(false)
+const expertTypingTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+const clinicalScrollRef = ref<HTMLElement | null>(null)
+const isSendingClinical = ref(false)
+let clinicalWs: WebSocket | null = null
+let clinicalWsReconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+// AI coach state
+const aiMessages = ref<AiMessage[]>([
   {
     id: '0',
     role: 'assistant',
-    content: "Hello! I'm your NutriPlan AI nutritionist. I can help you with recipe ideas, analyze your food diary macros, answer questions about your target nutrients, or explain ICMR-NIN guidelines. How can I help you today?",
+    content: "Hello! I'm your NutriPlan AI nutritionist. I can help with recipes, macros, diary analysis, and ICMR-NIN guidelines. How can I help you today?",
     timestamp: new Date(),
   }
 ])
-
 const aiInput = ref('')
 const isAiTyping = ref(false)
-const scrollRef = ref<HTMLElement | null>(null)
+const aiScrollRef = ref<HTMLElement | null>(null)
+const activeRegion = ref(localStorage.getItem('nutriplan_regional_pref') || 'in_south_andhra')
 
-const suggestions = [
+// Expert info
+const expertName = 'Dr. Sarah Jenkins, RD, CDE'
+const expertAvatar = 'https://images.unsplash.com/photo-1594824813620-1361c4de4a75?w=150&q=80'
+const officeHours = 'Mon–Fri, 9:00 AM – 6:00 PM IST'
+const maxPendingQueue = 3
+
+// Turn-taking anti-spam counter
+const pendingPatientQuestions = computed(() => {
+  let count = 0
+  for (let i = clinicalMessages.value.length - 1; i >= 0; i--) {
+    if (clinicalMessages.value[i].sender === 'patient') count++
+    else break
+  }
+  return count
+})
+const isQueueLimitReached = computed(() => pendingPatientQuestions.value >= maxPendingQueue)
+
+const aiSuggestions = [
   "Suggest a high-protein South Indian breakfast under 400 kcal",
   "How can I increase iron in my Maharashtrian vegetarian diet?",
   "What is the ICMR-NIN recommended daily fiber intake?",
   "Suggest low-oil Bengali dinner options with high protein",
 ]
 
-const activeRegion = ref(localStorage.getItem('nutriplan_regional_pref') || 'in_south_andhra')
+// AI WebSocket
 const userId = localStorage.getItem('nutriplan_user_id') || 'user_123'
-const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-const wsUrl = `${protocol}//${window.location.host}/api/v1/ai-chat/ws/${userId}`
-
+const aiWsUrl = `${WS_PROTOCOL}//${window.location.host}/api/v1/ai-chat/ws/${userId}`
 const { status: wsStatus, send: wsSend, connect: wsConnect } = useResilientWebSocket({
-  url: wsUrl,
+  url: aiWsUrl,
   heartbeatIntervalMs: 20000,
-  onOpen: () => {
-    console.log("Connected to Resilient AI Chatbot WebSocket")
-  },
+  onOpen: () => { console.log("[AI WS] Connected") },
   onMessage: async (data: any) => {
     if (data.type === 'status') {
       isAiTyping.value = true
     } else if (data.type === 'ai_response' || data.type === 'escalation') {
       isAiTyping.value = false
-      aiMessages.value.push({
-        id: String(Date.now()),
-        role: 'assistant',
-        content: data.message || data.text || 'Response received.',
-        timestamp: new Date(),
-      })
-      await nextTick()
-      scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight, behavior: 'smooth' })
+      aiMessages.value.push({ id: String(Date.now()), role: 'assistant', content: data.message || data.text || '', timestamp: new Date() })
+      await scrollAi()
     }
   },
-  onError: () => {
-    console.warn("AI Chatbot WebSocket reconnecting...")
-  }
+  onError: () => {}
 })
 
-// ── Tab 2: Assigned Clinical Dietitian State & Anti-Spam Guardrails ───────────
-type ExpertConsentState = 'active' | 'pending' | 'none'
-const expertConsent = ref<ExpertConsentState>(
-  (localStorage.getItem('nutriplan_expert_consent_test@test.com') as any) || 'pending'
-)
-const expertEmail = ref('expert@nutriplan.local')
-const expertName = ref('Dr. Sarah Jenkins, RD, CDE')
-const expertTitle = ref('Clinical Dietitian · Diabetes & Metabolic Health')
-const expertAvatar = ref('https://images.unsplash.com/photo-1594824813620-1361c4de4a75?w=150&q=80')
-const officeHours = ref('Mon–Fri, 9:00 AM – 6:00 PM IST')
-const maxPendingQueue = 3 // Anti-spam turn-taking limit
+// ── Clinical WebSocket ────────────────────────────────────────────────────────
+function connectClinicalWs() {
+  const wsUrl = `${WS_PROTOCOL}//localhost:8012/api/v1/chat/ws/clinical/${CLINICAL_ROOM_ID}/${PATIENT_EMAIL}`
+  console.log(`[Clinical WS] Connecting to ${wsUrl}`)
 
-const expertMessages = ref<Message[]>([
-  {
-    id: 'exp-1',
-    role: 'user',
-    content: "Hello Dr. Sarah (expert@nutriplan.local), I am submitting my clinical intake request. I would like your guidance on optimizing my macros for energy and fat loss with South Indian regional foods (1800 kcal / 120g Protein).",
-    timestamp: new Date(Date.now() - 3600000 * 3),
-    attachment: {
-      type: 'lab_report',
-      title: 'Intake Health Bio & Macro Target Form (test@test.com)',
-      meta: '1800 kcal · Fasting Glucose 114 mg/dL · 8,400 daily steps'
+  if (clinicalWs) {
+    clinicalWs.close()
+  }
+
+  clinicalWs = new WebSocket(wsUrl)
+
+  clinicalWs.onopen = () => {
+    console.log('[Clinical WS] Connected')
+    if (clinicalWsReconnectTimer) clearTimeout(clinicalWsReconnectTimer)
+  }
+
+  clinicalWs.onmessage = async (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      await handleClinicalWsMessage(data)
+    } catch (e) {
+      console.error('[Clinical WS] Parse error', e)
     }
   }
-])
 
-const expertInput = ref('')
-const isExpertTyping = ref(false)
+  clinicalWs.onclose = () => {
+    console.log('[Clinical WS] Disconnected — reconnecting in 3s')
+    clinicalWsReconnectTimer = setTimeout(connectClinicalWs, 3000)
+  }
 
-// Calculate unanswered consecutive patient messages (turn-taking anti-spam quota)
-const pendingPatientQuestions = computed(() => {
-  let count = 0
-  for (let i = expertMessages.value.length - 1; i >= 0; i--) {
-    if (expertMessages.value[i].role === 'user') {
-      count++
-    } else {
+  clinicalWs.onerror = (e) => {
+    console.error('[Clinical WS] Error', e)
+  }
+}
+
+async function handleClinicalWsMessage(data: any) {
+  switch (data.type) {
+    case 'thread_status':
+      clinicalStatus.value = data.status
       break
-    }
-  }
-  return count
-})
 
-const isQueueLimitReached = computed(() => {
-  return pendingPatientQuestions.value >= maxPendingQueue
-})
+    case 'history':
+      clinicalMessages.value = data.messages || []
+      await scrollClinical()
+      break
 
-function activateConsentForTesting() {
-  expertConsent.value = 'active'
-  localStorage.setItem('nutriplan_expert_consent_test@test.com', 'active')
-  expertMessages.value.push({
-    id: `exp_welcome_${Date.now()}`,
-    role: 'assistant',
-    content: "Hello Test User! I (Dr. Sarah Jenkins, expert@nutriplan.local) have accepted your clinical consultation request and reviewed your health bio. Your two-way messaging channel is now active. How can I assist you with your diet plan today?",
-    timestamp: new Date(),
-  })
-}
-
-function resetConsentForTesting() {
-  expertConsent.value = 'pending'
-  localStorage.setItem('nutriplan_expert_consent_test@test.com', 'pending')
-  expertMessages.value = [
-    {
-      id: 'exp-1',
-      role: 'user',
-      content: "Hello Dr. Sarah (expert@nutriplan.local), I am submitting my clinical intake request. I would like your guidance on optimizing my macros for energy and fat loss with South Indian regional foods (1800 kcal / 120g Protein).",
-      timestamp: new Date(Date.now() - 3600000 * 3),
-      attachment: {
-        type: 'lab_report',
-        title: 'Intake Health Bio & Macro Target Form (test@test.com)',
-        meta: '1800 kcal · Fasting Glucose 114 mg/dL · 8,400 daily steps'
+    case 'clinical_message':
+      {
+        const msg: ClinicalMessage = data.payload
+        // Avoid duplicating already-added messages
+        const exists = clinicalMessages.value.some(m => m.id === msg.id)
+        if (!exists) {
+          clinicalMessages.value.push(msg)
+          await scrollClinical()
+        }
       }
-    }
-  ]
+      break
+
+    case 'intake_accepted':
+      clinicalStatus.value = 'active'
+      if (data.payload?.welcome_message) {
+        const msg: ClinicalMessage = data.payload.welcome_message
+        const exists = clinicalMessages.value.some(m => m.id === msg.id)
+        if (!exists) clinicalMessages.value.push(msg)
+        await scrollClinical()
+      }
+      break
+
+    case 'intake_declined':
+      clinicalStatus.value = 'declined'
+      break
+
+    case 'typing':
+      if (data.sender_email !== PATIENT_EMAIL) {
+        isExpertTyping.value = data.is_typing
+        if (expertTypingTimeout.value) clearTimeout(expertTypingTimeout.value)
+        if (data.is_typing) {
+          expertTypingTimeout.value = setTimeout(() => { isExpertTyping.value = false }, 5000)
+        }
+      }
+      break
+
+    case 'pong':
+      break
+
+    case 'error':
+      console.warn('[Clinical WS] Server error:', data.detail)
+      break
+  }
 }
 
-onMounted(() => {
-  wsConnect()
-  // Check if consent was accepted in expert portal tab
-  const savedConsent = localStorage.getItem('nutriplan_expert_consent_test@test.com')
-  if (savedConsent === 'active' && expertConsent.value !== 'active') {
-    activateConsentForTesting()
-  }
-})
+async function sendClinicalMessage() {
+  const text = clinicalInput.value.trim()
+  if (!text || isSendingClinical.value || clinicalStatus.value !== 'active' || isQueueLimitReached.value) return
 
+  isSendingClinical.value = true
+  clinicalInput.value = ''
+
+  const payload = {
+    type: 'message',
+    sender: 'patient',
+    sender_email: PATIENT_EMAIL,
+    recipient_email: EXPERT_EMAIL,
+    text,
+  }
+
+  if (clinicalWs && clinicalWs.readyState === WebSocket.OPEN) {
+    clinicalWs.send(JSON.stringify(payload))
+  } else {
+    // REST fallback
+    try {
+      await fetch(`${CHAT_API}/clinical/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: 'patient',
+          sender_email: PATIENT_EMAIL,
+          recipient_email: EXPERT_EMAIL,
+          text,
+        })
+      })
+    } catch (e) {
+      console.error('[Clinical REST] Send failed', e)
+    }
+  }
+
+  isSendingClinical.value = false
+}
+
+async function approveIntakeForTesting() {
+  try {
+    const res = await fetch(`${CHAT_API}/clinical/intake/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patient_email: PATIENT_EMAIL,
+        expert_email: EXPERT_EMAIL,
+      })
+    })
+    const data = await res.json()
+    if (data.ok) {
+      clinicalStatus.value = 'active'
+      localStorage.setItem(`nutriplan_expert_consent_${PATIENT_EMAIL}`, 'active')
+    }
+  } catch (e) {
+    // If backend offline, simulate locally
+    clinicalStatus.value = 'active'
+    localStorage.setItem(`nutriplan_expert_consent_${PATIENT_EMAIL}`, 'active')
+    clinicalMessages.value.push({
+      id: `exp_welcome_${Date.now()}`,
+      room_id: CLINICAL_ROOM_ID,
+      sender: 'expert',
+      sender_email: EXPERT_EMAIL,
+      recipient_email: PATIENT_EMAIL,
+      text: `Hello Test User! I (Dr. Sarah Jenkins, ${EXPERT_EMAIL}) have accepted your clinical consultation request. Your two-way messaging care window is now active.`,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date().toISOString(),
+    })
+    await scrollClinical()
+  }
+}
+
+function sendTypingIndicator(isTyping: boolean) {
+  if (clinicalWs && clinicalWs.readyState === WebSocket.OPEN) {
+    clinicalWs.send(JSON.stringify({ type: 'typing', is_typing: isTyping, sender_email: PATIENT_EMAIL }))
+  }
+}
+
+// ── AI Chat ───────────────────────────────────────────────────────────────────
 async function sendAiMessage(content?: string) {
   const text = content || aiInput.value.trim()
   if (!text) return
 
-  aiMessages.value.push({
-    id: String(Date.now()),
-    role: 'user',
-    content: text,
-    timestamp: new Date(),
-  })
-  
+  aiMessages.value.push({ id: String(Date.now()), role: 'user', content: text, timestamp: new Date() })
   aiInput.value = ''
- 
-  const sent = wsSend({
-    message: text,
-    context: {
-      glucose_mgdl: 112,
-      steps: 8420,
-      hrv_ms: 54,
-      calories_eaten: 1420,
-      calorie_goal: 2000
-    }
-  })
 
+  const sent = wsSend({ message: text })
   if (!sent) {
     isAiTyping.value = true
     setTimeout(async () => {
       isAiTyping.value = false
-      let reply = "Based on your recent biometric logs and dietary profile, your blood glucose levels (112 mg/dL) and daily steps (8,420) look well-balanced. Ensure you stay hydrated and hit your 120g protein target."
-      
       const lower = text.toLowerCase()
+      let reply = "Based on your biometric logs and dietary profile, your nutrition is on track. Keep hitting your 120g protein target daily."
       if (lower.includes('lunch') || lower.includes('eat')) {
-        reply = "For lunch today, I recommend a balanced plate: 150g Grilled Tofu / Paneer, 1 cup Brown Rice, and a generous portion of Palak Dal. This provides ~480 kcal and 26g of clean protein."
+        reply = "For lunch: 150g Grilled Paneer, 1 cup Brown Rice, Palak Dal, and a side of cucumber raita (~480 kcal, 28g protein)."
       } else if (lower.includes('iron') || lower.includes('protein')) {
-        reply = "To boost your daily bioavailable iron and protein, pair sprouted moong or spinach with vitamin C rich lemon juice or amla to enhance non-heme iron absorption per ICMR-NIN recommendations."
+        reply = "Pair sprouted moong, methi, or palak with vitamin C sources (lemon, amla) to enhance non-heme iron absorption per ICMR-NIN."
       }
-
-      aiMessages.value.push({
-        id: String(Date.now()),
-        role: 'assistant',
-        content: reply,
-        timestamp: new Date(),
-      })
-      await nextTick()
-      scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight, behavior: 'smooth' })
-    }, 1000)
+      aiMessages.value.push({ id: String(Date.now()), role: 'assistant', content: reply, timestamp: new Date() })
+      await scrollAi()
+    }, 1200)
   }
-
-  await nextTick()
-  scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight, behavior: 'smooth' })
+  await scrollAi()
 }
 
-async function sendExpertMessage() {
-  const text = expertInput.value.trim()
-  if (!text || isQueueLimitReached.value || expertConsent.value !== 'active') return
-
-  expertMessages.value.push({
-    id: String(Date.now()),
-    role: 'user',
-    content: text,
-    timestamp: new Date(),
-  })
-  
-  expertInput.value = ''
-
-  // Simulate dietitian acknowledgement
-  isExpertTyping.value = true
-  setTimeout(async () => {
-    isExpertTyping.value = false
-    expertMessages.value.push({
-      id: String(Date.now()),
-      role: 'assistant',
-      content: "Thank you for the update! I have received your question and noted your log. I'm currently reviewing your latest meal macros and will give you a detailed dietary recommendation shortly.",
-      timestamp: new Date(),
-    })
-    await nextTick()
-    scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight, behavior: 'smooth' })
-  }, 1800)
-
+// ── Scroll helpers ────────────────────────────────────────────────────────────
+async function scrollClinical() {
   await nextTick()
-  scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight, behavior: 'smooth' })
+  clinicalScrollRef.value?.scrollTo({ top: clinicalScrollRef.value.scrollHeight, behavior: 'smooth' })
+}
+async function scrollAi() {
+  await nextTick()
+  aiScrollRef.value?.scrollTo({ top: aiScrollRef.value.scrollHeight, behavior: 'smooth' })
 }
 
-function handleKeydown(e: KeyboardEvent) {
+function handleKeydown(e: KeyboardEvent, mode: 'ai' | 'clinical') {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    if (activeTab.value === 'ai') {
-      sendAiMessage()
-    } else {
-      sendExpertMessage()
-    }
+    if (mode === 'ai') sendAiMessage()
+    else sendClinicalMessage()
   }
 }
+
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
+onMounted(() => {
+  wsConnect()
+  connectClinicalWs()
+})
+
+onUnmounted(() => {
+  if (clinicalWs) clinicalWs.close()
+  if (clinicalWsReconnectTimer) clearTimeout(clinicalWsReconnectTimer)
+})
 </script>
 
 <template>
   <div class="flex flex-col h-[calc(100vh-8rem)] -my-6">
 
-    <!-- Top Mode Switcher Bar -->
+    <!-- Tab Switcher Bar -->
     <div class="shrink-0 pb-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <!-- Tabs -->
       <div class="inline-flex p-1 bg-surface-alt rounded-xl border border-border">
         <button
           class="px-4 py-1.5 rounded-lg font-display text-xs font-semibold transition-all flex items-center gap-2"
           :class="activeTab === 'expert' ? 'bg-card text-ink shadow-sm' : 'text-ink-muted hover:text-ink'"
           @click="activeTab = 'expert'"
         >
-          <span class="w-2 h-2 rounded-full" :class="expertConsent === 'active' ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'" />
-          🩺 Dr. Sarah Jenkins (Dietitian)
-          <span
-            class="px-1.5 py-0.2 rounded text-[0.65rem] font-bold"
-            :class="expertConsent === 'active' ? 'bg-success/15 text-success' : 'bg-amber-500/15 text-amber-600'"
+          <span class="w-2 h-2 rounded-full" :class="clinicalStatus === 'active' ? 'bg-emerald-500' : clinicalStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-amber-400'" />
+          🩺 Dr. Sarah Jenkins
+          <span class="px-1.5 rounded text-[0.65rem] font-bold"
+            :class="clinicalStatus === 'active' ? 'bg-success/15 text-success' : clinicalStatus === 'connecting' ? 'bg-amber-500/15 text-amber-600' : 'bg-amber-500/15 text-amber-600'"
           >
-            {{ expertConsent === 'active' ? 'ACTIVE' : 'PENDING' }}
+            {{ clinicalStatus === 'active' ? 'ACTIVE' : clinicalStatus === 'connecting' ? 'CONNECTING...' : 'PENDING' }}
           </span>
         </button>
         <button
@@ -279,48 +365,35 @@ function handleKeydown(e: KeyboardEvent) {
         </button>
       </div>
 
-      <!-- Context Badges & Test Helpers -->
       <div class="flex items-center gap-2">
-        <div v-if="activeTab === 'ai'" class="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full text-xs font-semibold text-primary">
-          🥗 {{ activeRegion.replace('in_', '').replace('_', ' ').toUpperCase() }} DIET
-        </div>
-        <div v-else class="flex items-center gap-2">
-          <!-- Test Mode Toggle Button -->
+        <template v-if="activeTab === 'expert'">
           <button
-            v-if="expertConsent === 'pending'"
-            @click="activateConsentForTesting"
-            class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1"
-            title="Click to simulate expert approval"
+            v-if="clinicalStatus === 'pending'"
+            @click="approveIntakeForTesting"
+            class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all"
           >
-            ⚡ Approve Request (Test)
+            ⚡ Approve (Test)
           </button>
-          <button
-            v-else
-            @click="resetConsentForTesting"
-            class="px-2 py-0.5 text-ink-muted hover:text-ink border border-border rounded text-[0.7rem]"
-            title="Reset to pending request state"
-          >
-            ↺ Reset
-          </button>
-
-          <span class="text-[0.72rem] text-ink-muted font-data hidden sm:inline">🕒 {{ officeHours }}</span>
-          <span
-            v-if="expertConsent === 'active'"
-            class="px-2.5 py-0.5 rounded-full text-[0.72rem] font-bold"
+          <span class="text-[0.72rem] text-ink-muted hidden sm:inline">🕒 {{ officeHours }}</span>
+          <span v-if="clinicalStatus === 'active'" class="px-2.5 py-0.5 rounded-full text-[0.72rem] font-bold"
             :class="isQueueLimitReached ? 'bg-amber-500/15 text-amber-600 border border-amber-500/30' : 'bg-primary/10 text-primary border border-primary/20'"
           >
-            {{ pendingPatientQuestions }}/{{ maxPendingQueue }} Questions Queued
+            {{ pendingPatientQuestions }}/{{ maxPendingQueue }} Queued
           </span>
-        </div>
+        </template>
+        <template v-else>
+          <div class="px-3 py-1 bg-primary/10 border border-primary/20 rounded-full text-xs font-semibold text-primary">
+            🥗 {{ activeRegion.replace('in_', '').replace('_', ' ').toUpperCase() }}
+          </div>
+        </template>
       </div>
     </div>
 
-    <!-- ═════════════════════════════════════════════════════════════════════════ -->
-    <!-- VIEW 1: AI HEALTH COACH CHAT -->
-    <!-- ═════════════════════════════════════════════════════════════════════════ -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- AI HEALTH COACH TAB -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
     <template v-if="activeTab === 'ai'">
-      <!-- Messages area -->
-      <div ref="scrollRef" class="flex-1 overflow-y-auto py-5 space-y-4 scroll-smooth">
+      <div ref="aiScrollRef" class="flex-1 overflow-y-auto py-5 space-y-4 scroll-smooth">
         <ChatBubble
           v-for="msg in aiMessages"
           :key="msg.id"
@@ -328,8 +401,6 @@ function handleKeydown(e: KeyboardEvent) {
           :sender-name="msg.role === 'assistant' ? 'NutriPlan AI' : undefined"
           :message="msg.content"
         />
-
-        <!-- Typing indicator -->
         <div v-if="isAiTyping" class="flex items-end gap-2">
           <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-[0.75rem] font-bold shrink-0">N</div>
           <div class="bg-info-soft text-info rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
@@ -339,21 +410,12 @@ function handleKeydown(e: KeyboardEvent) {
           </div>
         </div>
       </div>
-
-      <!-- Suggestions (shown when only greeting) -->
-      <div v-if="aiMessages.length === 1" class="shrink-0 py-3">
-        <p class="font-data text-[0.7rem] text-ink-muted uppercase tracking-wider mb-2">Suggested questions</p>
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="s in suggestions"
-            :key="s"
-            class="font-body text-[0.8rem] text-primary border border-primary/30 rounded-full px-3 py-1.5 hover:bg-primary-soft transition-colors"
-            @click="sendAiMessage(s)"
-          >{{ s }}</button>
-        </div>
+      <div v-if="aiMessages.length === 1" class="shrink-0 py-3 flex flex-wrap gap-2">
+        <button v-for="s in aiSuggestions" :key="s"
+          class="font-body text-[0.8rem] text-primary border border-primary/30 rounded-full px-3 py-1.5 hover:bg-primary-soft transition-colors"
+          @click="sendAiMessage(s)"
+        >{{ s }}</button>
       </div>
-
-      <!-- AI Input area -->
       <div class="shrink-0 pt-4 border-t border-border">
         <div class="flex gap-2 items-end">
           <textarea
@@ -361,139 +423,84 @@ function handleKeydown(e: KeyboardEvent) {
             placeholder="Ask your AI coach about macros, recipes, or ICMR targets..."
             rows="1"
             class="flex-1 font-body text-[0.88rem] text-ink bg-canvas-raised border border-border rounded-xl px-4 py-3 outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-ink-muted/60 max-h-32 overflow-y-auto"
-            @keydown="handleKeydown"
+            @keydown="handleKeydown($event, 'ai')"
           />
-          <button
-            class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong transition-colors disabled:opacity-50 active:scale-95"
-            :disabled="!aiInput.trim() || isAiTyping"
-            @click="sendAiMessage()"
-            aria-label="Send message"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-            </svg>
+          <button class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong disabled:opacity-50 active:scale-95" :disabled="!aiInput.trim() || isAiTyping" @click="sendAiMessage()">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" /></svg>
           </button>
         </div>
-        <p class="font-data text-[0.65rem] text-ink-muted mt-1.5 text-center">
-          AI responses are grounded in ICMR-NIN dietary guidelines. For medical diagnoses, consult your registered dietitian.
-        </p>
+        <p class="font-data text-[0.65rem] text-ink-muted mt-1.5 text-center">AI responses are grounded in ICMR-NIN guidelines. For clinical advice, consult your registered dietitian.</p>
       </div>
     </template>
 
-    <!-- ═════════════════════════════════════════════════════════════════════════ -->
-    <!-- VIEW 2: CLINICAL DIETITIAN CHAT (WITH CONSENT & ANTI-SPAM) -->
-    <!-- ═════════════════════════════════════════════════════════════════════════ -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- CLINICAL DIETITIAN TAB -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
     <template v-else>
-      <!-- Provider Header Card -->
+      <!-- Expert Header -->
       <div class="bg-card border border-border rounded-xl p-3 my-2 flex items-center justify-between shadow-xs">
         <div class="flex items-center gap-3">
-          <img :src="expertAvatar" alt="Doctor" class="w-10 h-10 rounded-full object-cover border border-border shrink-0" />
+          <img :src="expertAvatar" class="w-10 h-10 rounded-full object-cover border border-border shrink-0" alt="Expert" />
           <div>
             <div class="font-display font-semibold text-sm text-ink flex items-center gap-2">
               {{ expertName }}
-              <span class="text-xs text-primary font-data font-normal">({{ expertEmail }})</span>
+              <span class="text-xs text-primary font-mono font-normal">({{ EXPERT_EMAIL }})</span>
             </div>
-            <div class="text-xs text-ink-muted">{{ expertTitle }}</div>
+            <div class="text-xs text-ink-muted">Clinical Dietitian · Diabetes &amp; Metabolic Health</div>
           </div>
         </div>
-        <div class="flex items-center gap-2">
-          <router-link to="/appointments" class="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
-            📅 Book Video Session
-          </router-link>
-        </div>
+        <router-link to="/appointments" class="text-xs font-semibold text-primary hover:underline flex items-center gap-1">📅 Book Video</router-link>
       </div>
 
-      <!-- ── CASE A: PENDING INTAKE REQUEST STATE ────────────────────────────── -->
-      <div v-if="expertConsent === 'pending'" class="flex-1 flex flex-col justify-center items-center p-6 bg-surface-alt/30 overflow-y-auto">
+      <!-- PENDING STATE -->
+      <div v-if="clinicalStatus === 'pending' || clinicalStatus === 'connecting'" class="flex-1 flex flex-col justify-center items-center p-6 overflow-y-auto">
         <div class="bg-card border border-border rounded-2xl p-6 max-w-lg w-full shadow-sm text-center">
-          <div class="w-12 h-12 rounded-full bg-amber-500/15 text-amber-600 flex items-center justify-center font-bold text-xl mx-auto mb-3">
-            ⏳
-          </div>
+          <div class="w-12 h-12 rounded-full bg-amber-500/15 text-amber-600 flex items-center justify-center text-xl mx-auto mb-3">⏳</div>
           <h3 class="font-display font-bold text-base text-ink mb-1">Consultation Request Pending</h3>
           <p class="text-xs text-ink-muted mb-4">
-            Your intake request has been submitted to <span class="font-semibold text-ink">{{ expertName }}</span> (<span class="font-mono text-primary">{{ expertEmail }}</span>).
+            Your intake has been submitted to <span class="font-semibold text-ink">{{ expertName }}</span>
+            (<span class="font-mono text-primary text-xs">{{ EXPERT_EMAIL }}</span>). Messaging opens once the expert approves.
           </p>
-
-          <!-- Intake details box -->
-          <div class="p-3.5 bg-surface-alt rounded-xl border border-border/80 text-left text-xs text-ink space-y-1.5 mb-5">
-            <div class="flex justify-between">
-              <span class="text-ink-muted font-medium">Patient Account:</span>
-              <span class="font-mono font-bold text-primary">test@test.com</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-ink-muted font-medium">Target Plan:</span>
-              <span>1800 kcal · South Indian High-Protein</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-ink-muted font-medium">Fasting Blood Sugar:</span>
-              <span>114 mg/dL</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-ink-muted font-medium">Anti-Spam Status:</span>
-              <span class="text-amber-600 font-semibold">Locked until Expert Approval</span>
-            </div>
+          <div class="p-3.5 bg-surface-alt rounded-xl border border-border/80 text-left text-xs space-y-1.5 mb-5">
+            <div class="flex justify-between"><span class="text-ink-muted">Patient:</span><span class="font-mono font-bold text-primary">{{ PATIENT_EMAIL }}</span></div>
+            <div class="flex justify-between"><span class="text-ink-muted">Expert:</span><span class="font-mono">{{ EXPERT_EMAIL }}</span></div>
+            <div class="flex justify-between"><span class="text-ink-muted">Room ID:</span><span class="font-mono text-xs text-ink-muted">{{ CLINICAL_ROOM_ID }}</span></div>
+            <div class="flex justify-between"><span class="text-ink-muted">Status:</span><span class="text-amber-600 font-semibold">Awaiting Expert Approval</span></div>
           </div>
-
           <div class="flex flex-col sm:flex-row gap-2.5 justify-center">
-            <button
-              @click="activateConsentForTesting"
-              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-            >
-              ✅ Approve as Dr. Sarah (Simulate Test)
+            <button @click="approveIntakeForTesting" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all">
+              ✅ Approve as Dr. Sarah (Test Simulation)
             </button>
-            <router-link
-              to="/appointments"
-              class="px-4 py-2 border border-border hover:bg-surface-alt rounded-xl text-xs font-semibold text-ink transition-colors"
-            >
-              View Available Slots
-            </router-link>
           </div>
         </div>
       </div>
 
-      <!-- ── CASE B: ACTIVE TWO-WAY MESSAGING ───────────────────────────────── -->
-      <template v-else>
-        <!-- Messages area -->
-        <div ref="scrollRef" class="flex-1 overflow-y-auto py-3 space-y-4 scroll-smooth">
-          <div
-            v-for="msg in expertMessages"
-            :key="msg.id"
-            class="flex flex-col"
-            :class="msg.role === 'user' ? 'items-end' : 'items-start'"
-          >
+      <!-- ACTIVE MESSAGING STATE -->
+      <template v-else-if="clinicalStatus === 'active'">
+        <div ref="clinicalScrollRef" class="flex-1 overflow-y-auto py-3 space-y-4 scroll-smooth">
+          <div v-for="msg in clinicalMessages" :key="msg.id" class="flex flex-col" :class="msg.sender === 'patient' ? 'items-end' : 'items-start'">
             <div
               class="max-w-[82%] sm:max-w-[70%] rounded-2xl px-4 py-3 text-[0.88rem] leading-relaxed shadow-xs"
-              :class="msg.role === 'user' ? 'bg-primary text-white rounded-br-xs' : 'bg-surface-alt border border-border text-ink rounded-bl-xs'"
+              :class="msg.sender === 'patient' ? 'bg-primary text-white rounded-br-xs' : 'bg-surface-alt border border-border text-ink rounded-bl-xs'"
             >
-              <div v-if="msg.role === 'assistant'" class="font-bold text-[0.75rem] text-primary mb-1">
-                Dr. Sarah Jenkins (expert@nutriplan.local)
-              </div>
-              <p>{{ msg.content }}</p>
-
-              <!-- Attachment Card -->
-              <div
-                v-if="msg.attachment"
-                class="mt-2.5 p-2.5 rounded-xl border flex items-center gap-3 text-xs"
-                :class="msg.role === 'user' ? 'bg-white/10 border-white/20 text-white' : 'bg-card border-border text-ink'"
+              <div v-if="msg.sender === 'expert'" class="font-bold text-[0.75rem] text-primary mb-1">Dr. Sarah Jenkins ({{ EXPERT_EMAIL }})</div>
+              <p>{{ msg.text }}</p>
+              <div v-if="msg.attachment" class="mt-2.5 p-2.5 rounded-xl border flex items-center gap-3 text-xs"
+                :class="msg.sender === 'patient' ? 'bg-white/10 border-white/20 text-white' : 'bg-card border-border text-ink'"
               >
-                <div class="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center font-bold text-base shrink-0">
-                  📊
-                </div>
+                <div class="w-8 h-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center font-bold text-base shrink-0">📊</div>
                 <div class="overflow-hidden">
                   <div class="font-semibold truncate">{{ msg.attachment.title }}</div>
                   <div class="text-[0.72rem] opacity-80 truncate">{{ msg.attachment.meta }}</div>
                 </div>
               </div>
-
-              <div class="text-[0.68rem] mt-1.5 opacity-70 text-right">
-                {{ msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-              </div>
+              <div class="text-[0.68rem] mt-1.5 opacity-70 text-right">{{ msg.time }}</div>
             </div>
           </div>
 
-          <!-- Provider typing indicator -->
+          <!-- Expert Typing Indicator -->
           <div v-if="isExpertTyping" class="flex items-end gap-2">
-            <img :src="expertAvatar" alt="Doctor" class="w-7 h-7 rounded-full object-cover shrink-0" />
+            <img :src="expertAvatar" class="w-7 h-7 rounded-full object-cover shrink-0" alt="Expert" />
             <div class="bg-surface-alt border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
               <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms" />
               <span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms" />
@@ -502,46 +509,49 @@ function handleKeydown(e: KeyboardEvent) {
           </div>
         </div>
 
-        <!-- Anti-Spam Queue Warning Notice (when 3 questions pending) -->
-        <div
-          v-if="isQueueLimitReached"
-          class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-2 flex items-center gap-3 text-xs text-amber-700 dark:text-amber-300"
-        >
-          <span class="text-base">⏳</span>
-          <div class="flex-1">
-            <span class="font-bold">Pending Dietitian Review:</span>
-            You have reached the limit of 3 unanswered clinical questions. Dr. Sarah typically reviews and replies within 4–6 hours during office hours.
-          </div>
+        <!-- Queue limit warning -->
+        <div v-if="isQueueLimitReached" class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-2 flex items-center gap-3 text-xs text-amber-700">
+          <span>⏳</span>
+          <span><span class="font-bold">Pending Dietitian Review:</span> You have {{ maxPendingQueue }} unanswered questions queued. Dr. Sarah typically replies within 4–6 hours during office hours.</span>
         </div>
 
-        <!-- Expert Input area with Rate-Limit & Spam Prevention -->
+        <!-- Input Area -->
         <div class="shrink-0 pt-2 border-t border-border">
           <div class="flex gap-2 items-end">
             <textarea
-              v-model="expertInput"
-              :placeholder="isQueueLimitReached ? 'Awaiting response from Dr. Sarah before sending next question...' : 'Send a message or query to Dr. Sarah (expert@nutriplan.local)...'"
-              :disabled="isQueueLimitReached || isExpertTyping"
+              v-model="clinicalInput"
+              :placeholder="isQueueLimitReached ? 'Awaiting Dr. Sarah\'s response before sending more...' : `Message Dr. Sarah (${EXPERT_EMAIL})...`"
+              :disabled="isQueueLimitReached || isSendingClinical"
               rows="1"
               class="flex-1 font-body text-[0.88rem] text-ink bg-canvas-raised border border-border rounded-xl px-4 py-3 outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-ink-muted/60 disabled:opacity-50 disabled:bg-surface-alt max-h-32 overflow-y-auto"
-              @keydown="handleKeydown"
+              @keydown="handleKeydown($event, 'clinical')"
+              @input="sendTypingIndicator(true)"
+              @blur="sendTypingIndicator(false)"
             />
             <button
-              class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong transition-colors disabled:opacity-50 active:scale-95"
-              :disabled="!expertInput.trim() || isQueueLimitReached || isExpertTyping"
-              @click="sendExpertMessage()"
-              aria-label="Send message"
+              class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong disabled:opacity-50 active:scale-95"
+              :disabled="!clinicalInput.trim() || isQueueLimitReached || isSendingClinical"
+              @click="sendClinicalMessage()"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
-              </svg>
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" /></svg>
             </button>
           </div>
           <div class="flex items-center justify-between text-[0.65rem] text-ink-muted mt-1.5 px-1">
-            <span>🛡️ HIPAA-Compliant End-to-End Encrypted</span>
-            <span class="text-error font-medium">⚠️ For medical emergencies, call 112 / 911 immediately</span>
+            <span>🛡️ HIPAA-Compliant · End-to-End Encrypted</span>
+            <span class="text-error font-medium">⚠️ Medical emergency? Call 112 / 911</span>
           </div>
         </div>
       </template>
+
+      <!-- DECLINED STATE -->
+      <div v-else-if="clinicalStatus === 'declined'" class="flex-1 flex flex-col justify-center items-center p-6">
+        <div class="bg-card border border-border rounded-2xl p-6 max-w-sm w-full text-center">
+          <div class="text-2xl mb-2">🤖</div>
+          <h3 class="font-display font-bold text-sm text-ink mb-2">Redirected to AI Coach</h3>
+          <p class="text-xs text-ink-muted mb-4">The expert was unable to accept this consultation at this time. Your AI Health Coach is available 24/7 for nutritional guidance.</p>
+          <button @click="activeTab = 'ai'" class="px-4 py-2 bg-primary text-white rounded-xl text-xs font-bold">Open AI Coach</button>
+        </div>
+      </div>
     </template>
 
   </div>
