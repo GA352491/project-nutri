@@ -8,9 +8,35 @@ from ..schemas.payment_schemas import (
     ConnectInitRequest,
     BookingPaymentRequest,
     SetupIntentRequest,
+    PayoutTransferRequest,
 )
 
 router = APIRouter()
+
+
+@router.post("/payout/transfer")
+async def process_nutritionist_payout(req: PayoutTransferRequest):
+    """
+    Transfers net earnings to a nutritionist's Stripe Connect account.
+    Deducts the platform commission (default 15%) and sends remaining 85% to provider.
+    """
+    try:
+        transfer = stripe_provider.create_transfer(
+            gross_amount_usd=req.gross_amount_usd,
+            destination_account_id=req.destination_account_id,
+            platform_commission_percent=req.platform_commission_percent or 0.15,
+            currency=req.currency or "usd",
+            description=req.description or "Telehealth Consultation Net Payout",
+            metadata=req.metadata,
+        )
+        return {
+            "status": "success",
+            "payout": transfer
+        }
+    except stripe.StripeError as e:
+        raise HTTPException(status_code=502, detail=f"Stripe Transfer error: {e.user_message}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Payout processing error: {str(e)}")
 
 
 @router.post("/connect/init")

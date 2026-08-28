@@ -134,6 +134,57 @@ class StripeProvider:
             "status": intent.status
         }
 
+    def create_transfer(
+        self,
+        gross_amount_usd: float,
+        destination_account_id: str,
+        platform_commission_percent: float = 0.15,
+        currency: str = "usd",
+        description: str = "Telehealth Consultation Net Payout",
+        metadata: Optional[dict] = None
+    ) -> dict:
+        """
+        Transfers net earnings (1 - commission) directly to a nutritionist's connected Stripe account.
+        """
+        gross_cents = int(round(gross_amount_usd * 100))
+        commission_cents = int(round(gross_cents * platform_commission_percent))
+        net_payout_cents = gross_cents - commission_cents
+
+        is_real_connect = (
+            destination_account_id
+            and destination_account_id.startswith("acct_")
+            and "placeholder" not in destination_account_id
+            and "test_" not in destination_account_id
+        )
+
+        if is_real_connect:
+            transfer = stripe.Transfer.create(
+                amount=net_payout_cents,
+                currency=currency,
+                destination=destination_account_id,
+                description=description,
+                metadata={
+                    **(metadata or {}),
+                    "gross_amount_usd": str(gross_amount_usd),
+                    "platform_commission_percent": str(platform_commission_percent),
+                }
+            )
+            transfer_id = transfer.id
+        else:
+            transfer_id = f"tr_mock_{destination_account_id[:8]}_{net_payout_cents}"
+
+        return {
+            "transfer_id": transfer_id,
+            "destination_account_id": destination_account_id,
+            "gross_amount_usd": gross_amount_usd,
+            "gross_amount_cents": gross_cents,
+            "platform_commission_cents": commission_cents,
+            "net_payout_cents": net_payout_cents,
+            "net_payout_usd": round(net_payout_cents / 100.0, 2),
+            "currency": currency,
+            "status": "paid" if is_real_connect else "simulated_success"
+        }
+
     # ---------------------------------------------------------------------------
     # Webhooks
     # ---------------------------------------------------------------------------

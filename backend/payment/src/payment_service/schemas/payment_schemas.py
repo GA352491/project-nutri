@@ -23,6 +23,15 @@ class SetupIntentRequest(BaseModel):
     user_id: Optional[str] = "usr_patient_01"
 
 
+class PayoutTransferRequest(BaseModel):
+    destination_account_id: str
+    gross_amount_usd: float
+    platform_commission_percent: Optional[float] = 0.15  # Default 15% platform commission, 85% to provider
+    currency: Optional[str] = "usd"
+    description: Optional[str] = "Telehealth Consultation Payout"
+    metadata: Optional[dict] = None
+
+
 class PaymentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
