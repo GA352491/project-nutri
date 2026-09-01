@@ -5,12 +5,19 @@ import Button from '../../components/ui/Button.vue'
 import MealCard from '../../components/MealCard.vue'
 import MacroRing from '../../components/MacroRing.vue'
 import Toast from '../../components/ui/Toast.vue'
+import LiveRecipeSearchModal from '../../components/plan/LiveRecipeSearchModal.vue'
 import apiClient from '../../api'
 
 const router = useRouter()
 const isLoading = ref(false)
 const toastMessage = ref('')
 const showToast = ref(false)
+
+const showLiveSearchModal = ref(false)
+const selectedMealForSwap = ref<PlanMeal | null>(null)
+const isStreamConnecting = ref(false)
+const streamStage = ref<string | null>(null)
+const streamProgress = ref(0)
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const activeDay = ref('Mon')
@@ -257,6 +264,69 @@ const handleSwapMeal = async (meal: PlanMeal) => {
     notify('No alternative found matching this calorie window.')
   }
 }
+
+const openLiveSearchForMeal = (meal: PlanMeal) => {
+  selectedMealForSwap.value = meal
+  showLiveSearchModal.value = true
+}
+
+const onLiveRecipeSwapped = (replacement: any) => {
+  if (!selectedMealForSwap.value) return
+  const idx = meals.value.findIndex(m => m.id === selectedMealForSwap.value?.id)
+  if (idx !== -1) {
+    meals.value[idx] = {
+      ...replacement,
+      type: selectedMealForSwap.value.type
+    }
+    notify(`Swapped with live recipe "${replacement.title}" (${replacement.calories} kcal)!`)
+  }
+}
+
+const startLivePlanStream = () => {
+  isStreamConnecting.value = true
+  streamProgress.value = 10
+  streamStage.value = 'Connecting to solver stream...'
+
+  try {
+    const wsUrl = `ws://${window.location.hostname}:8009/api/v1/plan/ws/stream`
+    const ws = new WebSocket(wsUrl)
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: 'generate_plan',
+        user_id: 'user_123',
+        caloric_target: 1800,
+        region_id: selectedRegion.value === 'palate_tour' ? 'in_south_andhra' : selectedRegion.value
+      }))
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        streamStage.value = data.message || data.stage
+        streamProgress.value = data.progress || 50
+
+        if (data.stage === 'complete' || data.type === 'stream_complete') {
+          setTimeout(() => {
+            isStreamConnecting.value = false
+            fetchWeeklyPlan(selectedRegion.value)
+            notify('Real-time Meal Plan solver completed!')
+          }, 400)
+        }
+      } catch (err) {
+        console.error('WS parse error:', err)
+      }
+    }
+
+    ws.onerror = () => {
+      isStreamConnecting.value = false
+      fetchWeeklyPlan(selectedRegion.value)
+    }
+  } catch (err) {
+    isStreamConnecting.value = false
+    fetchWeeklyPlan(selectedRegion.value)
+  }
+}
 </script>
 
 <template>
@@ -277,14 +347,39 @@ const handleSwapMeal = async (meal: PlanMeal) => {
         <Button v-if="selectedRegion !== 'palate_tour'" variant="primary" size="sm" @click="enablePalateTour">
           Start Palate Tour
         </Button>
-        <Button variant="outline" size="sm" @click="fetchWeeklyPlan(selectedRegion)" :disabled="isLoading">
-          {{ isLoading ? 'Optimizing...' : 'Regenerate Week' }}
+        <Button variant="primary" size="sm" @click="startLivePlanStream" :disabled="isStreamConnecting || isLoading">
+          <svg class="w-3.5 h-3.5 mr-1 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          {{ isStreamConnecting ? 'Streaming...' : 'Live Stream Plan' }}
         </Button>
+        <Button variant="outline" size="sm" @click="fetchWeeklyPlan(selectedRegion)" :disabled="isLoading">
+          {{ isLoading ? 'Optimizing...' : 'Regenerate' }}
+        </Button>
+      </div>
+    </div>
+
+    <!-- Live Stream Progress Banner -->
+    <div v-if="isStreamConnecting" class="bg-primary/10 border border-primary/30 rounded-xl p-3.5 mb-5 flex flex-col gap-2 animate-[card-in_260ms_var(--ease-out)_both]">
+      <div class="flex items-center justify-between text-xs">
+        <span class="font-bold text-primary flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+          Real-time Solver: {{ streamStage }}
+        </span>
+        <span class="font-data font-bold text-primary">{{ streamProgress }}%</span>
+      </div>
+      <div class="w-full bg-primary/20 rounded-full h-1.5 overflow-hidden">
+        <div class="bg-primary h-full transition-all duration-300 rounded-full" :style="{ width: `${streamProgress}%` }"></div>
       </div>
     </div>
 
     <!-- Toast Notification -->
     <Toast v-if="showToast" :message="toastMessage" @close="showToast = false" />
+
+    <!-- Live Recipe Search & Swap Modal -->
+    <LiveRecipeSearchModal
+      v-model="showLiveSearchModal"
+      :target-meal="selectedMealForSwap"
+      @swap="onLiveRecipeSwapped"
+    />
 
     <!-- Regional Food Selector Pills (Manual Override) -->
     <div class="mb-5">
@@ -414,7 +509,16 @@ const handleSwapMeal = async (meal: PlanMeal) => {
       <div v-for="meal in meals" :key="meal.id" class="flex flex-col gap-2">
         <div class="flex items-center justify-between ml-1">
           <span class="font-data text-[0.7rem] text-ink-muted uppercase tracking-[0.1em] font-semibold">{{ meal.type }}</span>
-          <span v-if="meal.cuisine" class="text-[0.7rem] font-data text-primary">{{ meal.cuisine }}</span>
+          <div class="flex items-center gap-2">
+            <button
+              @click.stop="openLiveSearchForMeal(meal)"
+              class="text-[0.7rem] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer bg-primary/10 px-2 py-0.5 rounded"
+            >
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              Search Live (Open APIs)
+            </button>
+            <span v-if="meal.cuisine" class="text-[0.7rem] font-data text-ink-muted">{{ meal.cuisine }}</span>
+          </div>
         </div>
         <MealCard
           :title="meal.title"
