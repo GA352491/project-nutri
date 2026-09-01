@@ -40,9 +40,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routes - AI Temporal Workflow Router mounted first
+# Routes - AI Temporal Workflow & Real-Time WebSocket Stream Routers
 from .routes.plans import router as plans_ai_router
+from .routes.plan_stream import router as plan_stream_router
+
 app.include_router(plans_ai_router, prefix="/api/v1/plan", tags=["AI Plan Workflows"])
+app.include_router(plan_stream_router, prefix="/api/v1/plan", tags=["Real-Time Plan Stream"])
 app.include_router(meal_plan_router)
 
 # Health endpoints

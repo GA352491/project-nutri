@@ -9,8 +9,18 @@ from ..services.recipe_service import (
     search_recipes, get_recipe_by_id, list_all_recipes,
     create_recipe, update_recipe, delete_recipe
 )
+from ..services.external_food_connector import live_external_food_connector
 
 router = APIRouter(prefix="/api/v1/recipes", tags=["Recipes"])
+
+
+@router.get("/external/live-search", summary="Search live 3rd-party recipe databases")
+async def search_live_3rd_party_recipes(q: str = "", cuisine: str = "Indian", limit: int = 15):
+    """
+    Directly queries live open-source 3rd-party APIs (TheMealDB + DummyJSON) in real-time
+    and computes dynamic ICMR-NIN macro & micronutrient values without hardcoded data.
+    """
+    return await live_external_food_connector.search_live_recipes(query=q, cuisine=cuisine, limit=limit)
 
 @router.get(
     "/",
