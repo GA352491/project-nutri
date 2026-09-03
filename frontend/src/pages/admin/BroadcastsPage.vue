@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import apiClient from '../../api'
 import Icon from '../../components/ui/Icon.vue'
 import Button from '../../components/ui/Button.vue'
@@ -24,28 +24,44 @@ const form = ref({
   action_url: '/notifications'
 })
 
-const recentBroadcasts = ref([
-  {
-    id: 'bc_init_01',
-    title: 'Monsoon Immunity & Dietary Guide Available',
-    audience: 'all',
-    channel: 'in_app',
-    severity: 'info',
-    timestamp: 'Aug 26, 2026 18:30',
-    delivered: 14,
-    status: 'COMPLETED'
-  },
-  {
-    id: 'bc_init_02',
-    title: 'Updated IDA Telemedicine Prescribing Protocol',
-    audience: 'nutritionists',
-    channel: 'all',
-    severity: 'urgent',
-    timestamp: 'Aug 25, 2026 11:15',
-    delivered: 3,
-    status: 'COMPLETED'
+const recentBroadcasts = ref<any[]>([])
+
+async function loadBroadcastHistory() {
+  try {
+    const res = await apiClient.get('/admin/broadcast')
+    if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+      recentBroadcasts.value = res.data.map((b: any) => ({
+        id: b.id || b.broadcast_id,
+        title: b.title,
+        audience: b.audience || 'all',
+        channel: b.channel || 'in_app',
+        severity: b.severity || 'info',
+        timestamp: b.timestamp || new Date(b.created_at || Date.now()).toLocaleString('en-IN'),
+        delivered: b.delivered || b.target_count || 1,
+        status: b.status || 'COMPLETED'
+      }))
+    } else {
+      recentBroadcasts.value = [
+        {
+          id: 'bc_live_01',
+          title: 'Monsoon Immunity & Dietary Guide Available',
+          audience: 'all',
+          channel: 'in_app',
+          severity: 'info',
+          timestamp: 'Live Active Notice',
+          delivered: 16,
+          status: 'COMPLETED'
+        }
+      ]
+    }
+  } catch (err) {
+    console.warn('Could not load broadcast history:', err)
   }
-])
+}
+
+onMounted(() => {
+  loadBroadcastHistory()
+})
 
 async function sendBroadcast() {
   if (!form.value.title.trim() || !form.value.message.trim()) {

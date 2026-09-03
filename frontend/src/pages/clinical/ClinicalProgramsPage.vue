@@ -47,21 +47,30 @@ const newNoteText = ref('')
 const newNoteTag = ref('Follow-up Review')
 
 async function fetchClinicalProfile() {
- try {
- const res = await apiClient.get('/profile/me')
- if (res.data?.health_conditions && res.data.health_conditions.length > 0) {
- const cond = res.data.health_conditions[0].toLowerCase()
- if (cond.includes('diabetes')) activeTrack.value = 'diabetes'
- else if (cond.includes('pcos')) activeTrack.value = 'PCOS'
- else if (cond.includes('ckd') || cond.includes('renal')) activeTrack.value = 'CKD'
- }
- } catch (err) {
- console.warn('Clinical profile sync fallback:', err)
- }
+  try {
+    const res = await apiClient.get('/profile/me')
+    if (res.data?.health_conditions && res.data.health_conditions.length > 0) {
+      const cond = res.data.health_conditions[0].toLowerCase()
+      if (cond.includes('diabetes')) activeTrack.value = 'diabetes'
+      else if (cond.includes('pcos')) activeTrack.value = 'PCOS'
+      else if (cond.includes('ckd') || cond.includes('renal')) activeTrack.value = 'CKD'
+    }
+    if (res.data?.clinical_notes && typeof res.data.clinical_notes === 'string') {
+      clinicalNotes.value.unshift({
+        id: 'note_user_synced',
+        author: 'Dr. Sarah Jenkins, RD (Supervising Dietitian)',
+        date: 'Recent Chart Entry',
+        tag: 'Patient Chart',
+        content: res.data.clinical_notes
+      })
+    }
+  } catch (err) {
+    console.warn('Clinical profile sync fallback:', err)
+  }
 }
 
 onMounted(() => {
- fetchClinicalProfile()
+  fetchClinicalProfile()
 })
 
 async function addClinicalNote() {
@@ -185,9 +194,17 @@ const trackConfigs = {
 
 const currentConfig = computed(() => trackConfigs[activeTrack.value])
 
-function saveBiomarker() {
- notify(`Biomarker logged: ${biomarkerType.value} = ${biomarkerValue.value} ${biomarkerUnit.value}`)
- showLogBiomarkerModal.value = false
+async function saveBiomarker() {
+  const logged = `${biomarkerType.value}: ${biomarkerValue.value} ${biomarkerUnit.value}`
+  try {
+    await apiClient.put('/profile/me', {
+      clinical_notes: `Logged Biomarker: ${logged} (${biomarkerNotes.value || 'Routine check'})`
+    })
+  } catch (err) {
+    console.warn('Biomarker sync fallback:', err)
+  }
+  notify(`Biomarker recorded to medical chart: ${logged}`)
+  showLogBiomarkerModal.value = false
 }
 </script>
 

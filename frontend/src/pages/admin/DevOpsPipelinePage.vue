@@ -40,28 +40,6 @@ const temporalQueues = ref([
 ])
 
 // Real smoke probe via admin dashboard health endpoint
-async function runSmokeProbe(): Promise<{ passed: number; total: number; results: any[] }> {
-  try {
-    const res = await fetch('/api/v1/admin/dashboard')
-    const data = await res.json()
-    const services = data.system_health || []
-    const passed = services.filter((s: any) => s.status === 'healthy').length
-    return { passed, total: services.length, results: services }
-  } catch {
-    return { passed: 0, total: 16, results: [] }
-  }
-}
-
-// Real Temporal check — ping Temporal Web API
-async function checkTemporal(): Promise<boolean> {
-  try {
-    await fetch('http://localhost:8233', { mode: 'no-cors' })
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function runLocalPipeline() {
   if (isRunning.value) return
   isRunning.value = true
