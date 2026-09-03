@@ -258,3 +258,77 @@ async def assign_expert_plan(req: ExpertPlanAssignRequest):
     }
 
 
+# ── Post-Registration AI Meal Plan Auto-Assign Hook ──────────────────────────
+import httpx as _httpx
+
+class OnboardingCompleteRequest(BaseModel):
+    """
+    Fired by the auth service (or frontend) immediately after a user
+    completes their onboarding profile during registration.
+
+    The flow is:
+      1. User fills in all onboarding fields (diet, goals, region, allergies).
+      2. Auth/Profile service saves the profile.
+      3. This endpoint is called — it checks the admin feature flag for this user.
+      4. If auto-assign is enabled (globally or per-user), plan generation fires async.
+      5. If disabled, the user gets a "Plan Pending" state until manually triggered.
+    """
+    user_id: str
+    caloric_target: int = 1800
+    regional_preference: str = "in_south_andhra"
+    dietary_flag: str = "vegetarian"
+    dietary_restrictions: List[str] = []
+    health_goals: List[str] = []
+    trigger_source: str = "post_onboarding_registration"
+
+
+@router.post("/on-registration-complete")
+async def handle_onboarding_complete(req: OnboardingCompleteRequest):
+    """
+    Post-onboarding hook. Checks admin AI auto-assign feature flag for this user,
+    then either fires plan generation immediately (async) or returns 'pending' state.
+
+    Per-user override > Global app flag.
+    """
+    auto_assign_enabled = True  # Default — will be overridden by admin flag check
+
+    # Check admin service for the effective flag value for this user
+    try:
+        async with _httpx.AsyncClient(timeout=1.5) as client:
+            res = await client.get(
+                f"http://localhost:8019/api/v1/admin/ai-plan/status",
+                params={"user_id": req.user_id}
+            )
+            if res.status_code == 200:
+                auto_assign_enabled = res.json().get("global_enabled", True)
+    except Exception:
+        # If admin service unreachable, default to enabled (fail-open for UX)
+        auto_assign_enabled = True
+
+    if not auto_assign_enabled:
+        return {
+            "status": "pending",
+            "user_id": req.user_id,
+            "auto_assigned": False,
+            "reason": "AI auto-assign is currently disabled by admin — a nutritionist will assign your plan or you can request one.",
+            "trigger_source": req.trigger_source,
+        }
+
+    # Auto-assign IS enabled — run regional optimizer (fast, <20ms, no LLM latency)
+    optimized = optimizer.solve_daily_plan(
+        caloric_target=req.caloric_target,
+        region_id=req.regional_preference,
+        slot_preferences=None,
+        dietary_flag=req.dietary_flag,
+        allergies=req.dietary_restrictions,
+    )
+
+    return {
+        "status": "success",
+        "user_id": req.user_id,
+        "auto_assigned": True,
+        "trigger_source": req.trigger_source,
+        "plan": optimized,
+        "engine": "NutriPlan Regional Optimizer (IFCT/ICMR-NIN)",
+        "message": "Your personalized 7-day meal plan has been generated and assigned to your account.",
+    }

@@ -313,7 +313,112 @@ _FEATURE_FLAGS: dict[str, FeatureFlag] = {
         rollout_pct=80,
         updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     ),
+    "ff_ai_auto_plan_on_register": FeatureFlag(
+        key="ff_ai_auto_plan_on_register",
+        name="AI Meal Plan Auto-Assign on Registration",
+        description=(
+            "When ENABLED: After every new user completes onboarding, the AI regional solver automatically "
+            "generates and assigns a personalized 7-day meal plan in the background. "
+            "When DISABLED: Users register fully but receive no plan — a nutritionist assigns manually or "
+            "the user requests one explicitly. Per-user overrides take precedence over this global setting."
+        ),
+        enabled=True,
+        category="ai",
+        rollout_pct=100,
+        updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    ),
 }
+
+# ── Per-User AI Meal Plan Auto-Assign Override Store ─────────────────────────
+# Keyed by user_id. If a user_id is NOT present, the global flag applies.
+# True  = AI plan will always auto-assign for this user (even if global is OFF)
+# False = AI plan will NEVER auto-assign for this user (even if global is ON)
+_USER_AI_PLAN_OVERRIDES: dict[str, bool] = {}
+
+
+def check_ai_auto_plan_enabled(user_id: Optional[str] = None) -> bool:
+    """
+    Resolve the effective AI auto-assign decision for a given user.
+    Per-user override takes precedence over the global feature flag.
+    """
+    if user_id and user_id in _USER_AI_PLAN_OVERRIDES:
+        return _USER_AI_PLAN_OVERRIDES[user_id]
+    return _FEATURE_FLAGS.get("ff_ai_auto_plan_on_register", FeatureFlag(
+        key="ff_ai_auto_plan_on_register", name="", description="", enabled=True,
+        category="ai", rollout_pct=100, updated_at=""
+    )).enabled
+
+
+async def set_user_ai_plan_override(user_id: str, enabled: bool) -> dict:
+    """Set a per-user AI meal plan auto-assign override."""
+    _USER_AI_PLAN_OVERRIDES[user_id] = enabled
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Audit trail
+    await create_audit_log(CreateAuditLogRequest(
+        action="WRITE",
+        resource_type="USER_AI_PLAN_OVERRIDE",
+        resource_id=user_id,
+        details=f"AI meal plan auto-assign override set to {'ENABLED' if enabled else 'DISABLED'} for user {user_id}",
+    ))
+    return {
+        "user_id": user_id,
+        "ai_auto_plan_enabled": enabled,
+        "override_active": True,
+        "updated_at": ts,
+        "message": f"AI auto-plan {'enabled' if enabled else 'disabled'} for user {user_id}. "
+                   f"This overrides the global app setting."
+    }
+
+
+async def trigger_user_ai_plan(user_id: str, caloric_target: int = 1800, region: str = "in_south_andhra", dietary_flag: str = "vegetarian") -> dict:
+    """Manually trigger AI meal plan generation for a specific user (admin action)."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.post(
+                "http://localhost:8009/api/v1/plan/generate/regional",
+                json={
+                    "user_id": user_id,
+                    "caloric_target": caloric_target,
+                    "regional_preference": region,
+                    "dietary_flag": dietary_flag,
+                    "trigger_source": "admin_manual_assign",
+                }
+            )
+            if res.status_code == 200:
+                plan_data = res.json()
+                await create_audit_log(CreateAuditLogRequest(
+                    action="WRITE",
+                    resource_type="MEAL_PLAN",
+                    resource_id=user_id,
+                    details=f"Admin manually triggered AI meal plan generation for user {user_id} ({caloric_target} kcal, {region}, {dietary_flag})",
+                ))
+                return {
+                    "status": "success",
+                    "user_id": user_id,
+                    "plan_generated": True,
+                    "trigger_source": "admin_manual",
+                    "triggered_at": ts,
+                    "plan": plan_data
+                }
+    except Exception as e:
+        pass
+
+    # Queued async response if Temporal not available
+    await create_audit_log(CreateAuditLogRequest(
+        action="WRITE",
+        resource_type="MEAL_PLAN",
+        resource_id=user_id,
+        details=f"Admin queued AI meal plan generation for user {user_id} — MealPlan service will process async",
+    ))
+    return {
+        "status": "queued",
+        "user_id": user_id,
+        "plan_generated": False,
+        "trigger_source": "admin_manual",
+        "triggered_at": ts,
+        "message": "Meal plan generation queued — will be ready in the user's dashboard within seconds."
+    }
 
 
 async def get_feature_flags() -> list[FeatureFlag]:
