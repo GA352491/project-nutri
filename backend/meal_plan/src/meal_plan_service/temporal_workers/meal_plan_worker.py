@@ -225,16 +225,41 @@ class MealPlanWorkflow:
 # ── Worker Entrypoint ───────────────────────────────────────────────────────
 
 async def run_meal_plan_worker():
+    from meal_plan_service.workflows.regional_weekly_workflow import (
+        PerpetualWeeklyMealPlanWorkflow,
+        RegionalMealPlanWeeklyWorkflow,
+        fetch_user_profile,
+        generate_weekly_regional_plan,
+        populate_grocery_list_from_plan,
+        fetch_wearable_steps,
+        recalibrate_caloric_target,
+        send_meal_reminder_notification,
+        fetch_diary_compliance,
+        notify_new_weekly_plan_ready,
+    )
+
     client = await Client.connect(TEMPORAL_HOST)
     worker = Worker(
         client,
         task_queue="meal-plan-task-queue",
-        workflows=[MealPlanWorkflow],
+        workflows=[
+            MealPlanWorkflow,
+            RegionalMealPlanWeeklyWorkflow,
+            PerpetualWeeklyMealPlanWorkflow,
+        ],
         activities=[
             fetch_user_context,
             generate_and_validate_meals,
             sync_plan_groceries,
             notify_plan_ready,
+            fetch_user_profile,
+            generate_weekly_regional_plan,
+            populate_grocery_list_from_plan,
+            fetch_wearable_steps,
+            recalibrate_caloric_target,
+            send_meal_reminder_notification,
+            fetch_diary_compliance,
+            notify_new_weekly_plan_ready,
         ],
     )
     print("[Temporal Worker] ✅ MealPlan worker running on queue: meal-plan-task-queue")
