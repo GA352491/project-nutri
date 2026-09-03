@@ -214,6 +214,108 @@ const doughnutOptions = {
  cutout: '70%',
  plugins: { legend: { position: 'bottom' as const } }
 }
+
+// ─── CGM Glucose Simulator ────────────────────────────────────────────────────
+// 24-hour interstitial glucose readings (simulated, 30-min intervals)
+const cgmTimeLabels = [
+ '12am','12:30','1am','1:30','2am','2:30','3am','3:30','4am','4:30','5am','5:30',
+ '6am','6:30','7am','7:30','8am','8:30','9am','9:30','10am','10:30','11am','11:30',
+ '12pm','12:30','1pm','1:30','2pm','2:30','3pm','3:30','4pm','4:30','5pm','5:30',
+ '6pm','6:30','7pm','7:30','8pm','8:30','9pm','9:30','10pm','10:30','11pm','11:30'
+]
+
+// Carbs-first scenario: sharp breakfast & lunch spike, high post-dinner excursion
+const cgmCarbsFirst = [
+ 82,80,79,78,78,77,76,76,77,78,80,84,
+ 90,112,148,175,185,172,145,122,108,98,92,89,
+ 88,100,128,162,178,168,150,132,115,105,96,92,
+ 90,88,92,110,148,174,182,170,148,128,108,92
+]
+
+// Protein+Fiber-first scenario: attenuated peaks, faster return to baseline
+const cgmFiberFirst = [
+ 82,80,79,78,78,77,76,76,77,78,80,84,
+ 88,96,112,128,135,128,118,108,99,93,89,87,
+ 86,93,108,124,132,126,116,106,98,92,89,87,
+ 86,85,88,98,118,132,136,128,114,102,94,87
+]
+
+const cgmChartData = computed(() => ({
+ labels: cgmTimeLabels,
+ datasets: [
+ {
+ label: '🔴 Carbs First (High Spike)',
+ data: cgmCarbsFirst,
+ borderColor: 'rgba(239,68,68,0.9)',
+ backgroundColor: 'rgba(239,68,68,0.08)',
+ fill: true,
+ tension: 0.4,
+ pointRadius: 0,
+ borderWidth: 2.5,
+ borderDash: [6, 3],
+ },
+ {
+ label: '🟢 Salad & Protein First (Blunted)',
+ data: cgmFiberFirst,
+ borderColor: 'rgba(16,185,129,0.95)',
+ backgroundColor: 'rgba(16,185,129,0.10)',
+ fill: true,
+ tension: 0.4,
+ pointRadius: 0,
+ borderWidth: 2.5,
+ }
+ ]
+}))
+
+const cgmChartOptions = {
+ responsive: true,
+ maintainAspectRatio: false,
+ interaction: { mode: 'index' as const, intersect: false },
+ plugins: {
+ legend: {
+ display: true,
+ position: 'top' as const,
+ labels: { usePointStyle: true, padding: 16, font: { size: 12 } }
+ },
+ tooltip: {
+ callbacks: {
+ label: (ctx: any) => ` ${ctx.dataset.label}: ${ctx.parsed.y} mg/dL`
+ }
+ }
+ },
+ scales: {
+ x: {
+ grid: { display: false },
+ ticks: {
+ maxTicksLimit: 8,
+ font: { size: 10 },
+ color: '#94a3b8'
+ }
+ },
+ y: {
+ min: 60,
+ max: 210,
+ grid: { color: 'rgba(0,0,0,0.05)' },
+ ticks: { font: { size: 10 }, color: '#94a3b8' },
+ title: { display: true, text: 'Glucose (mg/dL)', color: '#64748b', font: { size: 11 } }
+ }
+ }
+}
+
+// Live CGM status (simulated current reading)
+const liveCgmReading = ref(92)
+const cgmRiskLabel = computed(() => {
+ if (liveCgmReading.value < 70) return { label: 'Low — Eat Fast-Carbs', color: 'text-amber-600', bg: 'bg-amber-500/15 border-amber-300' }
+ if (liveCgmReading.value <= 140) return { label: 'In Range ✅', color: 'text-emerald-600', bg: 'bg-emerald-500/15 border-emerald-300' }
+ if (liveCgmReading.value <= 180) return { label: 'Elevated — Monitor', color: 'text-orange-600', bg: 'bg-orange-500/15 border-orange-300' }
+ return { label: 'High — Take Action', color: 'text-red-600', bg: 'bg-red-500/15 border-red-300' }
+})
+
+// Simulate a tick every 5s nudging glucose slightly
+setInterval(() => {
+ const delta = (Math.random() - 0.48) * 1.5
+ liveCgmReading.value = Math.min(200, Math.max(65, Math.round((liveCgmReading.value + delta) * 10) / 10))
+}, 5000)
 </script>
 
 <template>
@@ -413,6 +515,137 @@ const doughnutOptions = {
  <BarChart :data="stepsData" :options="chartOptions" />
  </div>
  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- CGM Live Glucose Sensor Simulator                                   -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div class="mt-10 space-y-6">
+    <div class="flex items-center justify-between border-b border-border pb-3">
+      <div class="flex items-center gap-3">
+        <h2 class="font-display font-semibold text-[1.2rem] text-ink">🩸 CGM Glucose Sensor Simulator</h2>
+        <span class="px-2.5 py-0.5 rounded-full text-[0.7rem] font-bold bg-red-500/15 text-red-600 border border-red-300">Abbott FreeStyle Libre · Simulated</span>
+      </div>
+      <span class="font-data text-[0.8rem] text-ink-muted">24-Hour Interstitial Glucose Readings</span>
+    </div>
+
+    <!-- Live Status Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div :class="['border rounded-2xl p-4 text-center', cgmRiskLabel.bg]">
+        <div class="font-display font-bold text-[2rem] tabular-nums" :class="cgmRiskLabel.color">{{ liveCgmReading }}</div>
+        <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">mg/dL · Current</div>
+        <div class="font-body text-[0.78rem] font-semibold mt-1" :class="cgmRiskLabel.color">{{ cgmRiskLabel.label }}</div>
+      </div>
+      <div class="border border-border rounded-2xl p-4 text-center bg-canvas-raised">
+        <div class="font-display font-bold text-[2rem] text-emerald-600 tabular-nums">3.2</div>
+        <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">mmol/L · Equivalent</div>
+        <div class="font-body text-[0.78rem] font-semibold mt-1 text-emerald-600">Normal</div>
+      </div>
+      <div class="border border-border rounded-2xl p-4 text-center bg-canvas-raised">
+        <div class="font-display font-bold text-[2rem] text-blue-600 tabular-nums">87%</div>
+        <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">Time In Range (TIR)</div>
+        <div class="font-body text-[0.78rem] font-semibold mt-1 text-blue-600">Target: &gt;70%</div>
+      </div>
+      <div class="border border-border rounded-2xl p-4 text-center bg-canvas-raised">
+        <div class="font-display font-bold text-[2rem] text-purple-600 tabular-nums">5.4%</div>
+        <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">Est. HbA1c</div>
+        <div class="font-body text-[0.78rem] font-semibold mt-1 text-purple-600">Optimal</div>
+      </div>
+    </div>
+
+    <!-- 24-Hour Dual Scenario Chart -->
+    <div class="bg-canvas-raised border border-border rounded-2xl p-6 shadow-sm">
+      <div class="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-5">
+        <div>
+          <h3 class="font-display font-semibold text-[1.1rem] text-ink">24-Hour Glucose Comparison</h3>
+          <p class="font-body text-[0.82rem] text-ink-muted mt-0.5">Same meals, different eating order. See how food sequencing flattens your glucose curve.</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="px-3 py-1 rounded-full text-[0.72rem] font-bold bg-emerald-500/15 text-emerald-700 border border-emerald-300">−35% Peak Spike</span>
+          <span class="px-3 py-1 rounded-full text-[0.72rem] font-bold bg-blue-500/15 text-blue-700 border border-blue-300">Lim et al., 2023</span>
+        </div>
+      </div>
+
+      <!-- Danger zone annotation -->
+      <div class="relative">
+        <div class="absolute right-4 top-1 font-data text-[0.68rem] text-red-400">⚠ Spike Zone &gt;140 mg/dL</div>
+        <div class="h-72">
+          <LineChart :data="cgmChartData" :options="cgmChartOptions" />
+        </div>
+      </div>
+
+      <div class="mt-4 grid grid-cols-2 gap-4">
+        <div class="p-3 rounded-xl bg-red-500/8 border border-red-200">
+          <div class="font-data text-[0.72rem] uppercase tracking-wider text-red-600 mb-1">🔴 Carbs First Peak</div>
+          <div class="font-display font-bold text-[1.4rem] text-red-600">185 mg/dL</div>
+          <div class="font-body text-[0.78rem] text-ink-muted">Biryani eaten immediately → sharp excursion, 2h to return</div>
+        </div>
+        <div class="p-3 rounded-xl bg-emerald-500/8 border border-emerald-200">
+          <div class="font-data text-[0.72rem] uppercase tracking-wider text-emerald-600 mb-1">🟢 Fiber+Protein First Peak</div>
+          <div class="font-display font-bold text-[1.4rem] text-emerald-600">136 mg/dL</div>
+          <div class="font-body text-[0.78rem] text-ink-muted">Salad → Dal → Biryani last → flat curve, 45 min faster recovery</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order of Eating Explainer -->
+    <div class="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-400/30 rounded-2xl p-6 shadow-sm">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="text-2xl">🍽️</div>
+        <div>
+          <h3 class="font-display font-semibold text-[1.1rem] text-ink">Clinical Order of Eating — Food Sequencing Buffer</h3>
+          <p class="font-body text-[0.82rem] text-ink-muted">Reduces postprandial glucose peak by ~35% with zero dietary changes · <span class="text-emerald-600 font-semibold">Lim et al., 2023 · Weickert et al., 2022</span></p>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <!-- Step 1 -->
+        <div class="relative p-5 rounded-xl bg-white/60 border border-emerald-200 shadow-sm">
+          <div class="absolute -top-3 left-4 px-2.5 py-0.5 rounded-full bg-emerald-500 text-white text-[0.7rem] font-bold">STEP 1 · 0 min</div>
+          <div class="text-3xl mb-3 mt-2">🥗</div>
+          <div class="font-display font-bold text-[1rem] text-emerald-700 mb-1">Fiber Primer</div>
+          <div class="font-body text-[0.82rem] text-ink-muted leading-relaxed">
+            Salad, leafy greens, raita, soup, or sabzi.<br/>
+            <span class="text-emerald-600 font-semibold">Why:</span> Soluble fiber forms a viscous gel that slows glucose absorption in the small intestine.
+          </div>
+          <div class="mt-3 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-[0.72rem] font-bold text-emerald-700 inline-block">Impact: −18% peak</div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="relative p-5 rounded-xl bg-white/60 border border-blue-200 shadow-sm">
+          <div class="absolute -top-3 left-4 px-2.5 py-0.5 rounded-full bg-blue-500 text-white text-[0.7rem] font-bold">STEP 2 · +5 min</div>
+          <div class="text-3xl mb-3 mt-2">🍗</div>
+          <div class="font-display font-bold text-[1rem] text-blue-700 mb-1">Protein & Fat Anchor</div>
+          <div class="font-body text-[0.82rem] text-ink-muted leading-relaxed">
+            Dal, paneer, chicken, fish, curd, eggs, or nuts.<br/>
+            <span class="text-blue-600 font-semibold">Why:</span> Stimulates GLP-1 & GIP incretin release which potentiates insulin response before the carb load arrives.
+          </div>
+          <div class="mt-3 px-2.5 py-1 rounded-lg bg-blue-500/15 text-[0.72rem] font-bold text-blue-700 inline-block">Impact: −12% peak</div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="relative p-5 rounded-xl bg-white/60 border border-amber-200 shadow-sm">
+          <div class="absolute -top-3 left-4 px-2.5 py-0.5 rounded-full bg-amber-500 text-white text-[0.7rem] font-bold">STEP 3 · +10 min</div>
+          <div class="text-3xl mb-3 mt-2">🍚</div>
+          <div class="font-display font-bold text-[1rem] text-amber-700 mb-1">Carbohydrates Last</div>
+          <div class="font-body text-[0.82rem] text-ink-muted leading-relaxed">
+            Rice, roti, biryani, bread, pasta, or dessert.<br/>
+            <span class="text-amber-600 font-semibold">Why:</span> By this point, insulin is pre-activated and gut motility is slowed — carbs are absorbed gradually.
+          </div>
+          <div class="mt-3 px-2.5 py-1 rounded-lg bg-amber-500/15 text-[0.72rem] font-bold text-amber-700 inline-block">Total reduction: −35%</div>
+        </div>
+      </div>
+
+      <div class="mt-5 p-3.5 rounded-xl bg-white/50 border border-emerald-200 flex items-start gap-3">
+        <span class="text-xl">💡</span>
+        <p class="font-body text-[0.82rem] text-ink-muted leading-relaxed">
+          <span class="font-semibold text-ink">NutriPlan AI automatically applies this sequence</span> when generating your meal plan. 
+          Meals with GI &gt;55 (Biryani, White Rice, Naan) are flagged with the 🩸 CGM badge and sequenced 
+          with a <span class="text-emerald-600 font-semibold">fiber-protein primer course</span> in your daily schedule.
+        </p>
+      </div>
+    </div>
+  </div>
+  <!-- end CGM section -->
 
  </div>
  </div>

@@ -17,6 +17,7 @@ class NutriMealCard extends StatelessWidget {
   final VoidCallback onLog;
   final VoidCallback onSwap;
   final VoidCallback onTap;
+  final bool highGlycemic; // CGM Spike Radar flag
 
   const NutriMealCard({
     super.key,
@@ -32,6 +33,7 @@ class NutriMealCard extends StatelessWidget {
     required this.onLog,
     required this.onSwap,
     required this.onTap,
+    this.highGlycemic = false,
   });
 
   @override
@@ -117,6 +119,36 @@ class NutriMealCard extends StatelessWidget {
                       _buildDivider(),
                       _buildMacro(fat.toString(), 'F', color: MacroColors.fat),
                     ],
+                  ),
+                  const SizedBox(height: 6),
+
+                  // CGM Spike Radar chip
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: highGlycemic
+                          ? const Color(0xFFFFF3E0)
+                          : const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: highGlycemic
+                            ? const Color(0xFFFFA726)
+                            : const Color(0xFF66BB6A),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      highGlycemic
+                          ? '\uD83E\uDE78 CGM GI 55+ · Eat Salad 1st'
+                          : '\uD83E\uDE78 CGM Stable',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: highGlycemic
+                            ? const Color(0xFFE65100)
+                            : const Color(0xFF2E7D32),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   

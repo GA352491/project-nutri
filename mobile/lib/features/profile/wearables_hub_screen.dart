@@ -298,10 +298,180 @@ class _WearablesHubScreenState extends State<WearablesHubScreen> {
               ),
             );
           }),
+
+          // ─── CGM Glucose Sensor Panel ────────────────────────────────────
+          const SizedBox(height: 24),
+          const Row(
+            children: [
+              Text('🩸 CGM Glucose Sensor', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              SizedBox(width: 8),
+              Chip(
+                label: Text('FreeStyle Libre · Simulated', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                backgroundColor: Color(0xFFB71C1C),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 2.2,
+            children: [
+              _buildCgmTile('92 mg/dL', 'Current · In Range ✅', const Color(0xFF10B981), const Color(0xFF064E3B)),
+              _buildCgmTile('5.1 mmol/L', 'Equivalent · Normal', Colors.blue, const Color(0xFF1E3A5F)),
+              _buildCgmTile('87%', 'Time In Range (TIR)', Colors.purple, const Color(0xFF3B1F6E)),
+              _buildCgmTile('5.4%', 'Est. HbA1c · Optimal', Colors.amber, const Color(0xFF78350F)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('24h Glucose — Food Order Impact', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 4),
+                Text('Same meal. Different eating sequence.', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB71C1C).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFEF9A9A)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('🔴 Carbs First', style: TextStyle(color: Color(0xFFEF9A9A), fontWeight: FontWeight.bold, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            const Text('185 mg/dL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
+                            Text('Peak spike', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF6EE7B7)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('🟢 Salad First', style: TextStyle(color: Color(0xFF6EE7B7), fontWeight: FontWeight.bold, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            const Text('136 mg/dL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
+                            Text('−35% lower peak', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [const Color(0xFF10B981).withValues(alpha: 0.15), const Color(0xFF0F172A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('🍽️ Clinical Order of Eating', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 4),
+                Text('~35% peak reduction · Lim et al., 2023', style: TextStyle(color: const Color(0xFF10B981).withValues(alpha: 0.9), fontSize: 11, fontStyle: FontStyle.italic)),
+                const SizedBox(height: 14),
+                _buildEatingStep('STEP 1 · 0 min', '🥗', 'Fiber Primer', 'Salad, greens, raita, sabzi', const Color(0xFF10B981), '−18% peak'),
+                const SizedBox(height: 10),
+                _buildEatingStep('STEP 2 · +5 min', '🍗', 'Protein & Fat Anchor', 'Dal, paneer, chicken, curd', Colors.blue, '−12% peak'),
+                const SizedBox(height: 10),
+                _buildEatingStep('STEP 3 · +10 min', '🍚', 'Carbohydrates Last', 'Rice, roti, biryani, naan', Colors.amber, '−35% total'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
         ],
       ),
     );
   }
+
+  Widget _buildCgmTile(String value, String label, Color textColor, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: textColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(value, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 17)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 9), maxLines: 2, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEatingStep(String stepLabel, String emoji, String title, String desc, Color accentColor, String impactLabel) {
+    return Row(
+      children: [
+        Container(
+          width: 38, height: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: accentColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+          child: Text(emoji, style: const TextStyle(fontSize: 18)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(stepLabel, style: TextStyle(color: accentColor, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+              Text(desc, style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 11)),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(color: accentColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
+          child: Text(impactLabel, style: TextStyle(color: accentColor, fontSize: 10, fontWeight: FontWeight.bold)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatPill
 
   Widget _buildStatPill(String label) {
     return Container(

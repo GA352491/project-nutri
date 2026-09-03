@@ -66,6 +66,8 @@ services=(
   "backend/payment/src:payment_service.main:8016:Payment (Stripe)"
   "backend/delivery/src:delivery_service.main:8017:Delivery"
   "backend/wearable/src:wearable_service.main:8018:Wearable (FastStream)"
+  "backend/admin/src:admin_service.main:8019:Admin & Feature Flags"
+  "backend/food_recognition/src:food_recognition_service.main:8020:Food Recognition AI"
   "backend/marketplace/src:marketplace_service.main:8021:Marketplace"
   "backend/compliance/src:compliance_service.main:8002:Compliance (ICMR/USDA)"
   "backend/subscriptions/src:subscription_service.main:8007:Subscriptions & Growth"
