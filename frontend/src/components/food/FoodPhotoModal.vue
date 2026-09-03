@@ -23,9 +23,12 @@ const recognizedData = ref<{
 } | null>(null)
 
 const sampleDishes = [
- { name: 'Palak Paneer & Roti', img: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=500&auto=format&fit=crop&q=80', calories: 430, protein: 18, carbs: 46, fat: 19 },
- { name: 'Idli, Sambar & Coconut Chutney', img: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=500&auto=format&fit=crop&q=80', calories: 340, protein: 12, carbs: 64, fat: 4 },
- { name: 'Grilled Chicken & Quinoa Salad', img: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80', calories: 480, protein: 42, carbs: 32, fat: 16 }
+  { name: 'Butter Chicken & Garlic Naan', img: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=500&auto=format&fit=crop&q=80', calories: 690, protein: 38, carbs: 54, fat: 36 },
+  { name: 'Cafe Avocado Toast & Cappuccino', img: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500&auto=format&fit=crop&q=80', calories: 430, protein: 19, carbs: 35, fat: 24 },
+  { name: 'Palak Paneer & Tandoori Roti', img: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=500&auto=format&fit=crop&q=80', calories: 430, protein: 18, carbs: 46, fat: 19 },
+  { name: 'Mumbai Pav Bhaji & Vada Pav', img: 'https://images.unsplash.com/photo-1606491956689-2ea866880c84?w=500&auto=format&fit=crop&q=80', calories: 580, protein: 16, carbs: 78, fat: 26 },
+  { name: 'Idli, Sambar & Coconut Chutney', img: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=500&auto=format&fit=crop&q=80', calories: 340, protein: 12, carbs: 64, fat: 4 },
+  { name: 'Grilled Chicken & Caesar Salad', img: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80', calories: 480, protein: 42, carbs: 22, fat: 18 }
 ]
 
 import apiClient from '../../api'
