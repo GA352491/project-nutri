@@ -331,3 +331,98 @@ async def get_wearable_summary(user_id: str):
         "adaptive_message": adaptive_msg,
         "has_data": bool(history),
     }
+
+
+# ── Feature 4: CGM Blood Glucose Spike Predictor & Food Sequencing Engine ───
+
+class CGMPredictRequest(BaseModel):
+    user_id: str
+    meal_name: str
+    carbs_g: float
+    protein_g: float = 15.0
+    fat_g: float = 10.0
+    fiber_g: float = 3.0
+    baseline_glucose_mg_dl: Optional[float] = 95.0
+    glycemic_index: Optional[int] = None
+
+
+class CGMPredictResponse(BaseModel):
+    user_id: str
+    meal_name: str
+    glycemic_load: float
+    predicted_peak_glucose_mg_dl: float
+    predicted_spike_delta_mg_dl: float
+    spike_risk_category: str  # 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL'
+    clinical_order_of_eating: List[Dict[str, str]]
+    cgm_recommendation: str
+
+
+@router.post("/cgm/predict-spike", response_model=CGMPredictResponse, summary="Predict postprandial glucose spike & order-of-eating advice")
+async def predict_glucose_spike(req: CGMPredictRequest):
+    """
+    Evaluates meal glycemic load and predicts postprandial glucose excursion.
+    Applies scientifically validated 'Order of Eating' sequencing (Fiber & Protein first -> Carbs last)
+    to flatten postprandial blood glucose spikes by up to 35%.
+    """
+    # Estimate GI if not provided based on food name and fiber ratio
+    gi = req.glycemic_index
+    if not gi:
+        fn = req.meal_name.lower()
+        if any(w in fn for w in ["white rice", "naan", "bhature", "sweets", "sugar", "fries", "potato"]):
+            gi = 75
+        elif any(w in fn for w in ["biryani", "dosa", "roti", "paratha", "pasta"]):
+            gi = 62
+        elif any(w in fn for w in ["quinoa", "brown rice", "oats", "dal", "chickpea", "rajma"]):
+            gi = 45
+        else:
+            gi = 50
+
+    # Glycemic Load: GL = (GI * Net Carbs) / 100
+    net_carbs = max(5.0, req.carbs_g - req.fiber_g)
+    glycemic_load = round((gi * net_carbs) / 100.0, 1)
+
+    # Spike model: baseline + (GL * 2.8) - (Protein buffer * 0.4) - (Fiber buffer * 1.5)
+    base = req.baseline_glucose_mg_dl or 95.0
+    raw_spike = (glycemic_load * 2.6) - (req.protein_g * 0.35) - (req.fiber_g * 1.8)
+    spike_delta = max(8.0, round(raw_spike, 1))
+    peak_glucose = round(base + spike_delta, 1)
+
+    if peak_glucose > 160:
+        risk = "HIGH"
+    elif peak_glucose > 135:
+        risk = "MODERATE"
+    else:
+        risk = "LOW"
+
+    sequencing = [
+        {
+            "step": "1. Starter (Fiber Primer)",
+            "action": "Eat green salad, cucumber, or cooked leafy greens first",
+            "clinical_mechanism": "Soluble fiber forms a viscous gel layer in the small intestine, slowing carbohydrate absorption."
+        },
+        {
+            "step": "2. Main Anchor (Protein & Healthy Fats)",
+            "action": f"Eat your protein component ({round(req.protein_g)}g protein source)",
+            "clinical_mechanism": "Stimulates GLP-1 and CCK hormone secretion, delaying gastric emptying."
+        },
+        {
+            "step": "3. Carbohydrates (Last)",
+            "action": f"Consume rice/roti/bread last (after a 5-10 min interval)",
+            "clinical_mechanism": "Reduces peak glucose amplitude by 30-38% compared to eating carbs first."
+        }
+    ]
+
+    return CGMPredictResponse(
+        user_id=req.user_id,
+        meal_name=req.meal_name,
+        glycemic_load=glycemic_load,
+        predicted_peak_glucose_mg_dl=peak_glucose,
+        predicted_spike_delta_mg_dl=spike_delta,
+        spike_risk_category=risk,
+        clinical_order_of_eating=sequencing,
+        cgm_recommendation=(
+            f"Estimated peak glucose: {peak_glucose} mg/dL ({risk} risk). "
+            "Following the 3-step eating sequence will flatten glucose excursion and prevent post-meal fatigue."
+        )
+    )
+

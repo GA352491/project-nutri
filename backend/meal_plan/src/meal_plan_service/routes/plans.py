@@ -350,3 +350,65 @@ async def handle_onboarding_complete(req: OnboardingCompleteRequest):
         "message": "Your personalized 7-day meal plan has been generated and assigned. Recurring 7-day auto-renewal is scheduled.",
     }
 
+
+# ── Feature 1: Smart Cheat Day / Budget Compensation Endpoint ───────────────
+from ..services.compensation_engine import compensation_engine, CompensationRequest, CompensationPlanResponse
+
+@router.post("/compensate-overage", response_model=CompensationPlanResponse)
+async def compensate_overage(req: CompensationRequest):
+    """
+    Computes smooth 48-hour calorie compensation or authorized cheat-day forgiveness
+    when a user logs outside food or restaurant calories exceeding their daily goal.
+    """
+    return compensation_engine.generate_compensation_plan(req)
+
+
+# ── Feature 2: Clinical Risk Pre-Flight Approval Gate ─────────────────────────
+from ..services.clinical_tracks import clinical_tracks
+
+class ClinicalSignOffRequest(BaseModel):
+    user_id: str
+    nutritionist_id: str
+    ida_license_number: str
+    decision: str = "APPROVED"  # 'APPROVED' | 'REJECTED_NEEDS_MODIFICATION'
+    clinical_modifications: Optional[str] = None
+    override_reason: Optional[str] = "Clinical safety verified against renal/diabetic biomarkers"
+
+_CLINICAL_SIGNOFF_RECORDS: dict[str, dict] = {}
+
+@router.post("/clinical/evaluate-gate")
+async def evaluate_gate(profile: Dict[str, Any]):
+    """Evaluate whether user profile triggers mandatory clinical pre-flight approval."""
+    return clinical_tracks.evaluate_clinical_risk_gate(profile)
+
+@router.post("/clinical/approve/{user_id}")
+async def clinical_approve_plan(user_id: str, req: ClinicalSignOffRequest):
+    """
+    Certified Nutritionist / Clinical Dietitian approves and signs off on a high-risk patient's meal plan.
+    Unlocks plan into patient portal with official IDA license stamp.
+    """
+    import datetime
+    ts = datetime.datetime.utcnow().isoformat()
+    record = {
+        "user_id": user_id,
+        "nutritionist_id": req.nutritionist_id,
+        "ida_license_number": req.ida_license_number,
+        "decision": req.decision,
+        "status": "STATUS_ACTIVE_APPROVED" if req.decision == "APPROVED" else "STATUS_REJECTED",
+        "clinical_modifications": req.clinical_modifications,
+        "override_reason": req.override_reason,
+        "signed_at": ts,
+        "fssai_ida_seal": f"IDA-VERIFIED-{req.ida_license_number}-{user_id[:6]}"
+    }
+    _CLINICAL_SIGNOFF_RECORDS[user_id] = record
+    return {
+        "status": "success",
+        "message": f"Plan for patient {user_id} signed off by Dr. / Dietitian ({req.ida_license_number}).",
+        "record": record
+    }
+
+@router.get("/clinical/signoff-record/{user_id}")
+async def get_signoff_record(user_id: str):
+    return _CLINICAL_SIGNOFF_RECORDS.get(user_id, {"status": "NO_RECORD_FOUND", "requires_signoff": False})
+
+

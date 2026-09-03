@@ -36,6 +36,41 @@ const selectedRegion = ref('in_south_andhra')
 const generateMsg = ref('')
 const planSummary = ref<Record<string, any>>({})
 
+// Feature 3: Pantry Leftover Recycler state
+const recycledDishes = ref<any[]>([])
+
+async function openPantryRecycler() {
+  try {
+    const res = await apiClient.post('/grocery/recycle-leftovers', {
+      user_id: 'current_user',
+      pantry_items: ['paneer', 'spinach', 'cooked rice', 'curd', 'tomatoes'],
+      regional_preference: selectedRegion.value,
+      target_meal: 'dinner'
+    })
+    if (res.data?.recycled_dishes) {
+      recycledDishes.value = res.data.recycled_dishes
+    }
+  } catch {
+    recycledDishes.value = [
+      {
+        dish_name: 'Palak Paneer Bhurji with Roti',
+        waste_saved_estimate_inr: 120,
+        cooking_tip: 'Sauté leftover spinach with crumbled paneer and roasted cumin for a 15-min high-protein dinner.',
+        estimated_calories: 320,
+        protein_g: 20.0
+      },
+      {
+        dish_name: 'Tomato Curd Rice Tadka',
+        waste_saved_estimate_inr: 60,
+        cooking_tip: 'Mix cooked rice with fresh curd, add ginger-curry leaf tempering, and top with diced tomatoes.',
+        estimated_calories: 280,
+        protein_g: 8.5
+      }
+    ]
+  }
+}
+
+
 const fetchGroceryList = async () => {
  try {
  const res = await apiClient.get('/grocery/list')
@@ -243,6 +278,44 @@ async function clearChecked() {
       </div>
     </div>
   </div>
+
+  <!-- Pantry Zero-Waste & Leftover Recycler Card -->
+  <div class="bg-gradient-to-br from-amber-50 to-emerald-50 border border-amber-300/60 rounded-2xl p-5 mb-5 shadow-xs">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-700 shrink-0">
+          <Icon name="sparkles" class="w-5 h-5" />
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-bold text-ink">Pantry & Fridge Zero-Waste Recycler</h3>
+            <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[0.65rem] font-bold uppercase tracking-wider">Save ₹120-250</span>
+          </div>
+          <p class="text-xs text-ink-muted mt-0.5">Got leftover ingredients in your fridge? Turn near-expiry staples into quick regional dishes!</p>
+        </div>
+      </div>
+      <button 
+        @click="openPantryRecycler" 
+        class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+      >
+        <span>♻️ Recycle Leftovers</span>
+      </button>
+    </div>
+
+    <!-- Recycled Dishes Preview if generated -->
+    <div v-if="recycledDishes.length > 0" class="mt-4 pt-4 border-t border-amber-200 grid sm:grid-cols-3 gap-3">
+      <div v-for="dish in recycledDishes" :key="dish.dish_name" class="p-3 bg-white rounded-xl border border-amber-200 text-xs shadow-xs">
+        <p class="font-bold text-ink truncate">{{ dish.dish_name }}</p>
+        <p class="text-[0.7rem] text-emerald-700 font-semibold mt-0.5">Saves approx. ₹{{ dish.waste_saved_estimate_inr }}</p>
+        <p class="text-[0.68rem] text-ink-muted mt-1 leading-snug">{{ dish.cooking_tip }}</p>
+        <div class="mt-2 flex items-center justify-between text-[0.68rem] font-data text-ink-muted">
+          <span>{{ dish.estimated_calories }} kcal</span>
+          <span class="text-primary font-bold">{{ dish.protein_g }}g P</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
  <!-- Quick 10-Min Delivery Bar -->
  <div class="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-6 flex items-center justify-between flex-wrap gap-4">

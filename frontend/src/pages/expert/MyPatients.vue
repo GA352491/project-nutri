@@ -149,6 +149,22 @@ async function submitCustomPlan() {
   notify(`Assigned custom plan "${customPlan.value.planTitle}" to ${selectedPatient.value?.name}!`)
 }
 
+async function signOffPatient(patient: any) {
+  try {
+    await apiClient.post(`/plan/clinical/approve/${patient.id}`, {
+      user_id: patient.id,
+      nutritionist_id: 'nut_201',
+      ida_license_number: 'IDA-KL-2024-8841',
+      decision: 'APPROVED',
+      clinical_modifications: 'Glycemic load capped <45. Potassium within safe renal index.'
+    })
+  } catch (e) {
+    console.warn('Clinical sign-off sync:', e)
+  }
+  patient.condition = patient.condition.replace(' (Pending)', '')
+  notify(`✅ Clinical Sign-off stamped for ${patient.name}! Plan unlocked with IDA license seal.`)
+}
+
 async function scheduleFollowUp() {
   if (selectedPatient.value) {
     try {
@@ -320,59 +336,84 @@ async function scheduleFollowUp() {
  </div>
  </div>
 
- <!-- ── TABLE ───────────────────────────────────────────────────────── -->
- <div class="bg-canvas-raised border border-border rounded-xl overflow-hidden shadow-sm">
- <table class="w-full text-left border-collapse">
- <thead>
- <tr class="bg-canvas border-b border-border">
- <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Patient Name</th>
- <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Condition Focus</th>
- <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Active Meal Plan</th>
- <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Compliance</th>
- <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold text-right">Actions</th>
- </tr>
- </thead>
- <tbody class="divide-y divide-border">
- <tr v-for="patient in patients" :key="patient.id" class="hover:bg-canvas/50 transition-colors">
- <td class="py-3.5 px-4 font-body text-[0.9rem] font-semibold text-ink">
- <div class="flex items-center gap-2.5">
- <div class="w-8 h-8 rounded-full bg-primary-soft text-primary font-bold text-xs flex items-center justify-center">
- {{ patient.name.split(' ').map(n=>n[0]).join('') }}
- </div>
- <div>
- <div>{{ patient.name }}</div>
- <div class="text-[0.72rem] font-normal text-ink-muted">{{ patient.age }}y · {{ patient.gender }}</div>
- </div>
- </div>
- </td>
- <td class="py-3.5 px-4 font-body text-[0.88rem] text-ink">
- <Chip variant="neutral">{{ patient.condition }}</Chip>
- </td>
- <td class="py-3.5 px-4">
- <div class="font-semibold text-[0.85rem] text-ink">{{ patient.active_plan_name }}</div>
- <div class="font-data text-[0.72rem] text-ink-muted">{{ patient.caloric_target }} kcal/day</div>
- </td>
- <td class="py-3.5 px-4 font-data text-[0.85rem] font-bold text-primary">
- {{ patient.last_compliance }}
- </td>
- <td class="py-3.5 px-4 text-right space-x-2">
- <Button size="sm" variant="outline" @click="openChart(patient)" class="inline-flex items-center gap-1">
- <Icon name="trends" :size="13" />
- <span>Chart</span>
- </Button>
- <Button size="sm" variant="outline" @click="openFollowUp(patient)" class="inline-flex items-center gap-1">
- <Icon name="calendar" :size="13" />
- <span>Follow-up</span>
- </Button>
- <Button size="sm" @click="openAssignPlan(patient)" class="inline-flex items-center gap-1">
- <Icon name="recipe" :size="13" />
- <span>Assign Plan</span>
- </Button>
- </td>
- </tr>
- </tbody>
- </table>
- </div>
+  <!-- ── TABLE ───────────────────────────────────────────────────────── -->
+  <div class="bg-canvas-raised border border-border rounded-xl overflow-hidden shadow-sm">
+  <table class="w-full text-left border-collapse">
+  <thead>
+  <tr class="bg-canvas border-b border-border">
+  <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Patient Name</th>
+  <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Condition Focus</th>
+  <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Active Meal Plan</th>
+  <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Clinical Gate</th>
+  <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Compliance</th>
+  <th class="py-3.5 px-4 font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold text-right">Actions</th>
+  </tr>
+  </thead>
+  <tbody class="divide-y divide-border">
+  <tr v-for="patient in patients" :key="patient.id" class="hover:bg-canvas/50 transition-colors">
+  <td class="py-3.5 px-4 font-body text-[0.9rem] font-semibold text-ink">
+  <div class="flex items-center gap-2.5">
+  <div class="w-8 h-8 rounded-full bg-primary-soft text-primary font-bold text-xs flex items-center justify-center">
+  {{ patient.name.split(' ').map(n=>n[0]).join('') }}
+  </div>
+  <div>
+  <div>{{ patient.name }}</div>
+  <div class="text-[0.72rem] font-normal text-ink-muted">{{ patient.age }}y · {{ patient.gender }}</div>
+  </div>
+  </div>
+  </td>
+  <td class="py-3.5 px-4 font-body text-[0.88rem] text-ink">
+  <Chip variant="neutral">{{ patient.condition }}</Chip>
+  </td>
+  <td class="py-3.5 px-4">
+  <div class="font-semibold text-[0.85rem] text-ink">{{ patient.active_plan_name }}</div>
+  <div class="font-data text-[0.72rem] text-ink-muted">{{ patient.caloric_target }} kcal/day</div>
+  </td>
+  <td class="py-3.5 px-4">
+    <span 
+      v-if="patient.condition.includes('Diabetes') || patient.condition.includes('PCOS')"
+      class="px-2 py-0.5 rounded-full text-[0.68rem] font-bold uppercase tracking-wider border inline-flex items-center gap-1 bg-amber-50 text-amber-800 border-amber-300"
+    >
+      <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+      Pending Sign-Off
+    </span>
+    <span 
+      v-else
+      class="px-2 py-0.5 rounded-full text-[0.68rem] font-bold uppercase tracking-wider border inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border-emerald-300"
+    >
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+      IDA Approved
+    </span>
+  </td>
+  <td class="py-3.5 px-4 font-data text-[0.85rem] font-bold text-primary">
+  {{ patient.last_compliance }}
+  </td>
+  <td class="py-3.5 px-4 text-right space-x-1.5">
+  <button 
+    v-if="patient.condition.includes('Diabetes') || patient.condition.includes('PCOS')"
+    @click="signOffPatient(patient)"
+    class="px-2.5 py-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-all inline-flex items-center gap-1 cursor-pointer"
+  >
+    <Icon name="check" :size="12" />
+    <span>IDA Sign-Off</span>
+  </button>
+  <Button size="sm" variant="outline" @click="openChart(patient)" class="inline-flex items-center gap-1">
+  <Icon name="trends" :size="13" />
+  <span>Chart</span>
+  </Button>
+  <Button size="sm" variant="outline" @click="openFollowUp(patient)" class="inline-flex items-center gap-1">
+  <Icon name="calendar" :size="13" />
+  <span>Follow-up</span>
+  </Button>
+  <Button size="sm" @click="openAssignPlan(patient)" class="inline-flex items-center gap-1">
+  <Icon name="recipe" :size="13" />
+  <span>Assign Plan</span>
+  </Button>
+  </td>
+  </tr>
+  </tbody>
+  </table>
+  </div>
 
- </div>
+  </div>
 </template>

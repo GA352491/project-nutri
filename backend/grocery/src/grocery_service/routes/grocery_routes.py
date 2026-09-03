@@ -105,3 +105,20 @@ async def generate_grocery_from_plan(
             "regional_preference": req.regional_preference,
         },
     )
+
+
+# ── Feature 3: Pantry Zero-Waste & Leftover Recycler Endpoint ───────────────
+from ..services.pantry_recycler import (
+    recycle_pantry_ingredients,
+    PantryLeftoverRequest,
+    PantryRecyclerResponse
+)
+
+@router.post("/recycle-leftovers", response_model=PantryRecyclerResponse, summary="Recycle pantry & fridge leftovers into regional meals")
+async def recycle_leftovers(req: PantryLeftoverRequest):
+    """
+    Analyzes leftover perishable ingredients from user's fridge and matches them with
+    high-affinity regional recipes to minimize food waste and save grocery expenditure.
+    """
+    return recycle_pantry_ingredients(req)
+

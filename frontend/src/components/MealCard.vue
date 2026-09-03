@@ -62,9 +62,23 @@ function handleSwap(e: Event) {
  {{ statusText }}
  </span>
  </div>
- <div class="font-data text-[0.72rem] text-ink-muted tabular-nums truncate">
- {{ macros }}
- </div>
+  <div class="font-data text-[0.72rem] text-ink-muted tabular-nums truncate flex items-center gap-2">
+  <span>{{ macros }}</span>
+  <span 
+    v-if="title.toLowerCase().includes('biryani') || title.toLowerCase().includes('rice') || title.toLowerCase().includes('dosa') || title.toLowerCase().includes('roti')"
+    class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 font-bold text-[0.65rem] border border-amber-300"
+    title="CGM Food Sequencing Buffer: Eat greens & protein first, carbs last to reduce blood sugar peak by 35%"
+  >
+    🩸 CGM GI 55+ · Eat Salad 1st
+  </span>
+  <span 
+    v-else
+    class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 font-bold text-[0.65rem] border border-emerald-300"
+    title="Stable glycemic load: Low spike risk"
+  >
+    🩸 CGM Stable
+  </span>
+  </div>
  </div>
  
  <div class="flex items-center gap-2 shrink-0">

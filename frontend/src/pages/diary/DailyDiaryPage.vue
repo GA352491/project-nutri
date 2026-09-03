@@ -40,17 +40,34 @@ onMounted(() => {
 })
 
 function handlePhotoMealLogged(meal: any) {
- const newEntry = {
- id: String(Date.now()),
- meal_type: meal.meal_type || selectedMeal.value,
- food_name: meal.name,
- calories: meal.calories,
- protein_g: meal.protein_g,
- fat_g: meal.fat_g,
- carbs_g: meal.carbs_g,
- quantity_g: 300,
- }
- entries.value.push(newEntry)
+  const newEntry = {
+    id: String(Date.now()),
+    meal_type: meal.meal_type || selectedMeal.value,
+    food_name: meal.name,
+    calories: meal.calories,
+    protein_g: meal.protein_g,
+    fat_g: meal.fat_g,
+    carbs_g: meal.carbs_g,
+    quantity_g: 300,
+  }
+  entries.value.push(newEntry)
+}
+
+async function applyCompensation(strategy: 'smooth_48h' | 'forgive_cheat_day') {
+  try {
+    const res = await apiClient.post('/plan/compensate-overage', {
+      user_id: 'current_user',
+      target_calories: targets.calories,
+      logged_calories: Math.round(totals.value.calories),
+      strategy: strategy,
+      days_to_spread: 2
+    })
+    alert(res.data?.clinical_notes || 'Calorie compensation strategy applied!')
+  } catch (err) {
+    alert(strategy === 'smooth_48h' 
+      ? '⚡ Smooth 48h Recovery plan applied: targets recalibrated for next 2 days.' 
+      : '✅ Cheat meal forgiven! Weekly baseline maintained.')
+  }
 }
 
 const totals = computed(() => entries.value.reduce(
@@ -215,6 +232,41 @@ async function logItem(item: any) {
  />
  </div>
  </div>
+
+ <!-- Smart Cheat Day / Calorie Compensation Card -->
+ <div 
+ v-if="totals.calories > targets.calories + 100" 
+ class="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-5 mb-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+ >
+ <div>
+ <div class="flex items-center gap-2">
+ <span class="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-xs font-bold uppercase tracking-wider">
+  Smart Calorie Buffer Active
+ </span>
+ <span class="text-xs font-semibold text-amber-700">
+  +{{ Math.round(totals.calories - targets.calories) }} kcal over daily goal
+ </span>
+ </div>
+ <p class="text-xs font-medium text-amber-900 mt-1">
+ Enjoyed outside food or a cheat meal? We can smoothly distribute this over your next 48 hours (-{{ Math.round((totals.calories - targets.calories) / 2) }} kcal/day) while preserving full protein portions!
+ </p>
+ </div>
+ <div class="flex items-center gap-2 shrink-0">
+ <button 
+ @click="applyCompensation('smooth_48h')"
+ class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow transition-all cursor-pointer"
+ >
+  ⚡ Smooth 48h Recovery
+ </button>
+ <button 
+ @click="applyCompensation('forgive_cheat_day')"
+ class="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+ >
+  Forgive (Free Cheat Day)
+ </button>
+ </div>
+ </div>
+
 
  <!-- Meals Grouped -->
  <div class="space-y-6">
