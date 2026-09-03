@@ -68,8 +68,8 @@ export default defineConfig({
       '/api/v1/delivery': 'http://localhost:8017',
       '/api/v1/wearables': 'http://localhost:8018',
       '/api/v1/wearable': 'http://localhost:8018',
-      '/api/v1/food-recognition': 'http://localhost:8011',
-      '/api/v1/admin': 'http://localhost:8020',
+      '/api/v1/admin': 'http://localhost:8019',
+      '/api/v1/food-recognition': 'http://localhost:8020',
       '/api/v1/marketplace': 'http://localhost:8025',
     }
   }

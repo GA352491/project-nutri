@@ -181,7 +181,7 @@ const rangeEnd = computed(() => Math.min(currentPage.value * pageSize, filteredU
         </div>
         <p class="font-body text-[0.83rem] mt-1.5" :class="globalAiPlanEnabled ? 'text-emerald-700' : 'text-amber-700'">
           <span v-if="globalAiPlanEnabled">After every new user completes onboarding, AI automatically generates and assigns a personalized 7-day meal plan.</span>
-          <span v-else">New users complete onboarding but receive no plan — nutritionist assigns manually or user requests one explicitly.</span>
+          <span v-else>New users complete onboarding but receive no plan — nutritionist assigns manually or user requests one explicitly.</span>
         </p>
       </div>
       <button
