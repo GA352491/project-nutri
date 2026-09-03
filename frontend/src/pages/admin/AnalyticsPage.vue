@@ -23,34 +23,50 @@ const revenue = ref({
 })
 
 const kpis = ref({
- total_users: 0,
- total_recipes: 0,
+  total_users: 0,
+  total_recipes: 0,
+  avg_platform_latency_ms: 0.0,
 })
 
+interface ServiceLatency {
+  service: string
+  status: string
+  latency_ms: number
+  p95_ms: number
+  grade: string
+  sla_target_ms: number
+}
+
+const serviceLatencies = ref<ServiceLatency[]>([])
+
 async function fetchAnalytics() {
- isLoading.value = true
- try {
-  const res = await apiClient.get('/admin/analytics')
-  if (res.data?.revenue) {
-   revenue.value.subscriptions = res.data.revenue.subscriptions_usd || 0
-   revenue.value.marketplace_commissions = res.data.revenue.marketplace_commissions_usd || 0
+  isLoading.value = true
+  try {
+    const res = await apiClient.get('/admin/analytics')
+    if (res.data?.revenue) {
+      revenue.value.subscriptions = res.data.revenue.subscriptions_usd || 0
+      revenue.value.marketplace_commissions = res.data.revenue.marketplace_commissions_usd || 0
+    }
+    if (res.data?.costs) {
+      costs.value.stripe_fees = res.data.costs.stripe_fees_usd || 0
+      costs.value.jitsi_infra = res.data.costs.jitsi_infra_usd || 0
+      costs.value.ollama_compute = res.data.costs.ollama_compute_usd || 0
+      costs.value.redis_broker = res.data.costs.redis_broker_usd || 0
+      costs.value.temporal_server = res.data.costs.temporal_server_usd || 0
+    }
+    if (res.data?.kpis) {
+      kpis.value.total_users = res.data.kpis.total_users || 0
+      kpis.value.total_recipes = res.data.kpis.total_recipes || 0
+      kpis.value.avg_platform_latency_ms = res.data.kpis.avg_platform_latency_ms || 0.0
+    }
+    if (res.data?.latencies) {
+      serviceLatencies.value = res.data.latencies
+    }
+  } catch (err) {
+    console.warn('Analytics API unavailable:', err)
+  } finally {
+    isLoading.value = false
   }
-  if (res.data?.costs) {
-   costs.value.stripe_fees = res.data.costs.stripe_fees_usd || 0
-   costs.value.jitsi_infra = res.data.costs.jitsi_infra_usd || 0
-   costs.value.ollama_compute = res.data.costs.ollama_compute_usd || 0
-   costs.value.redis_broker = res.data.costs.redis_broker_usd || 0
-   costs.value.temporal_server = res.data.costs.temporal_server_usd || 0
-  }
-  if (res.data?.kpis) {
-   kpis.value.total_users = res.data.kpis.total_users || 0
-   kpis.value.total_recipes = res.data.kpis.total_recipes || 0
-  }
- } catch (err) {
-  console.warn('Analytics API unavailable:', err)
- } finally {
-  isLoading.value = false
- }
 }
 
 onMounted(fetchAnalytics)
@@ -190,8 +206,80 @@ const chartOptions = {
   </div>
  </div>
 
- </div>
+  <!-- Live Latency & API Performance Card -->
+  <div class="bg-canvas-raised border border-border p-6 rounded-2xl shadow-card space-y-4">
+   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-4">
+    <div>
+     <h2 class="font-display font-semibold text-[1.2rem] text-ink">Live API Latency & Performance Leaderboard</h2>
+     <p class="font-body text-xs text-ink-muted mt-0.5">Real-time response times (RTT), P95 estimates, and SLA health grades across all 21 microservices</p>
+    </div>
+    <div class="flex items-center gap-2 font-data text-xs">
+     <span class="px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold">
+      Avg Platform Latency: {{ kpis.avg_platform_latency_ms }} ms
+     </span>
+     <button @click="fetchAnalytics" class="px-3 py-1 bg-canvas border border-border hover:border-primary text-ink rounded-lg font-semibold transition-colors cursor-pointer">
+      Refresh Latency
+     </button>
+    </div>
+   </div>
 
- </template>
+   <div class="overflow-x-auto">
+    <table class="w-full text-left text-xs">
+     <thead>
+      <tr class="bg-canvas/80 border-b border-border text-ink-muted uppercase font-data text-[0.68rem] tracking-wider">
+       <th class="py-2.5 px-4 font-semibold">Rank & Service</th>
+       <th class="py-2.5 px-3 font-semibold">Status</th>
+       <th class="py-2.5 px-3 font-semibold text-right">Live Latency</th>
+       <th class="py-2.5 px-3 font-semibold text-right">P95 (Est.)</th>
+       <th class="py-2.5 px-3 font-semibold text-right">SLA Target</th>
+       <th class="py-2.5 px-4 font-semibold text-center">SLA Grade</th>
+      </tr>
+     </thead>
+     <tbody class="divide-y divide-border font-body">
+      <tr v-for="(lat, idx) in serviceLatencies" :key="lat.service" class="hover:bg-canvas/50 transition-colors">
+       <td class="py-3 px-4 font-semibold text-ink flex items-center gap-2">
+        <span class="w-5 h-5 rounded-full bg-canvas border border-border flex items-center justify-center font-data text-[0.65rem] text-ink-muted">{{ idx + 1 }}</span>
+        <span>{{ lat.service }}</span>
+       </td>
+       <td class="py-3 px-3">
+        <span 
+         class="px-2 py-0.5 rounded-full text-[0.68rem] font-bold capitalize border inline-flex items-center gap-1"
+         :class="lat.status === 'healthy' ? 'bg-success-soft text-success border-success/30' : 'bg-danger-soft text-danger border-danger/30'"
+        >
+         <span class="w-1.5 h-1.5 rounded-full" :class="lat.status === 'healthy' ? 'bg-success' : 'bg-danger'"></span>
+         {{ lat.status }}
+        </span>
+       </td>
+       <td class="py-3 px-3 text-right font-data tabular-nums font-semibold" :class="lat.latency_ms < 20 ? 'text-emerald-600' : lat.latency_ms < 100 ? 'text-primary' : lat.latency_ms < 300 ? 'text-amber-600' : 'text-danger'">
+        {{ lat.latency_ms }} ms
+       </td>
+       <td class="py-3 px-3 text-right font-data tabular-nums text-ink-muted">
+        {{ lat.p95_ms }} ms
+       </td>
+       <td class="py-3 px-3 text-right font-data tabular-nums text-ink-muted">
+        &lt; {{ lat.sla_target_ms }} ms
+       </td>
+       <td class="py-3 px-4 text-center">
+        <span 
+         class="px-2 py-0.5 rounded text-[0.7rem] font-bold font-data"
+         :class="{
+          'bg-emerald-500/15 text-emerald-700': lat.grade === 'A+' || lat.grade === 'A',
+          'bg-primary/15 text-primary': lat.grade === 'B',
+          'bg-amber-500/15 text-amber-700': lat.grade === 'C',
+          'bg-danger/15 text-danger': lat.grade === 'D'
+         }"
+        >
+         Grade {{ lat.grade }}
+        </span>
+       </td>
+      </tr>
+     </tbody>
+    </table>
+   </div>
+  </div>
+
+  </div>
+
+  </template>
  </div>
 </template>
