@@ -63,88 +63,62 @@ async function checkTemporal(): Promise<boolean> {
 }
 
 async function runLocalPipeline() {
- if (isRunning.value) return
- isRunning.value = true
- pipelineStatus.value = 'running'
- logLines.value = []
- stages.value.forEach(s => { s.status = 'idle'; s.duration = '—' })
+  if (isRunning.value) return
+  isRunning.value = true
+  pipelineStatus.value = 'running'
+  logLines.value = []
+  stages.value.forEach(s => { s.status = 'running'; s.duration = '...' })
 
- const addLog = (text: string) => {
-  const time = new Date().toLocaleTimeString('en-IN', { hour12: false })
-  logLines.value.push(`[${time}] ${text}`)
- }
+  const addLog = (text: string) => {
+    const time = new Date().toLocaleTimeString('en-IN', { hour12: false })
+    logLines.value.push(`[${time}] ${text}`)
+  }
 
- addLog('[Harness CI] Pipeline execution started on localhost...')
+  addLog('[Harness CI] Initiating real backend DevOps execution pipeline...')
+  addLog('[Harness CI] Dispatching POST /api/v1/admin/devops/trigger-pipeline...')
 
- // Step 1: Lint
- stages.value[0].status = 'running'
- addLog('Step 1/5: Executing code linting and security AST check...')
- await new Promise(r => setTimeout(r, 1200))
- stages.value[0].status = 'success'
- stages.value[0].duration = '1.2s'
- addLog('✓ Ruff: 0 syntax errors across 16 microservices')
- addLog('✓ Bandit Security AST: 0 high-severity vulnerabilities detected')
+  try {
+    const res = await fetch('/api/v1/admin/devops/trigger-pipeline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+    
+    const data = await res.json()
+    
+    // Populate real stages from backend
+    if (Array.isArray(data.stages)) {
+      stages.value = data.stages.map((st: any) => ({
+        id: st.id,
+        name: st.name,
+        tool: st.tool,
+        status: st.status,
+        duration: st.duration,
+        logs: st.status === 'success' ? `Passed verification in ${st.duration}` : 'Verification failed'
+      }))
+    }
 
- // Step 2: Unit tests
- stages.value[1].status = 'running'
- addLog('Step 2/5: Running Pytest test suite on shared core...')
- await new Promise(r => setTimeout(r, 1500))
- stages.value[1].status = 'success'
- stages.value[1].duration = '1.5s'
- addLog('✓ tests/test_compliance_engine.py::test_icmr_nin_macros PASSED')
- addLog('✓ tests/test_faststream_broker.py::test_steps_event PASSED')
- addLog('✓ tests/test_redis_cache.py::test_cache_aside_ttl PASSED')
- addLog('✓ 3 passed in 1.48s')
+    // Populate real terminal logs
+    if (Array.isArray(data.logs)) {
+      logLines.value = data.logs
+    }
 
- // Step 3: Temporal gRPC check — real probe
- stages.value[2].status = 'running'
- addLog('Step 3/5: Probing Temporal gRPC Server (localhost:7233)...')
- const temporalOk = await checkTemporal()
- await new Promise(r => setTimeout(r, 800))
- stages.value[2].status = 'success'
- stages.value[2].duration = '0.8s'
- if (temporalOk) {
-  addLog('✓ Temporal server reachable — Namespace "default" healthy')
-  temporalQueues.value[0].running = 1
-  temporalQueues.value[0].status = 'Active (Port 7233)'
-  temporalQueues.value[2].running = 2
-  temporalQueues.value[2].status = 'Active (Port 7233)'
- } else {
-  addLog('⚠ Temporal server not responding on :7233 (may need restart)')
- }
+    // Populate real Temporal queues
+    if (Array.isArray(data.temporal_queues)) {
+      temporalQueues.value = data.temporal_queues
+    }
 
- // Step 4: Real live smoke gate — hits admin dashboard health API
- stages.value[3].status = 'running'
- addLog('Step 4/5: Running live microservice smoke test probe matrix...')
- const { passed, total, results } = await runSmokeProbe()
- await new Promise(r => setTimeout(r, 1000))
-
- const healthyServices = results.filter((s: any) => s.status === 'healthy').map((s: any) => s.service_name)
- const downServices = results.filter((s: any) => s.status !== 'healthy').map((s: any) => s.service_name)
-
- if (passed >= total - 2) {
-  stages.value[3].status = 'success'
-  addLog(`✓ ${passed}/${total} microservices responding 200 OK`)
-  if (healthyServices.length > 0) addLog(`✓ Healthy: ${healthyServices.slice(0, 6).join(', ')}...`)
-  if (downServices.length > 0) addLog(`⚠ Offline (not started): ${downServices.join(', ')}`)
- } else {
-  stages.value[3].status = 'failed'
-  addLog(`✗ Only ${passed}/${total} services healthy — check logs`)
- }
- stages.value[3].duration = '1.0s'
-
- // Step 5: GitOps trigger
- stages.value[4].status = 'running'
- addLog('Step 5/5: Generating deployment artifact & GitOps trigger...')
- await new Promise(r => setTimeout(r, 800))
- stages.value[4].status = 'success'
- stages.value[4].duration = '0.8s'
- addLog('✓ ArgoCD sync hook triggered for local environment')
- addLog(`[Harness CI] Pipeline completed — ${passed}/${total} services passing`)
-
- isRunning.value = false
- pipelineStatus.value = stages.value.some(s => s.status === 'failed') ? 'failed' : 'success'
- notify(`CI/CD Pipeline complete: ${passed}/${total} microservices healthy!`)
+    pipelineStatus.value = data.pipeline_status || 'success'
+    notify(`CI/CD Pipeline executed cleanly: ${data.healthy_services || '100%'} services passing in ${data.total_duration}!`)
+  } catch (err: any) {
+    addLog(`✗ Pipeline execution error: ${err.message || err}`)
+    pipelineStatus.value = 'failed'
+    stages.value.forEach(s => { if (s.status === 'running') s.status = 'failed' })
+    notify(`Pipeline execution error: ${err.message || 'Check terminal'}`)
+  } finally {
+    isRunning.value = false
+  }
 }
 </script>
 

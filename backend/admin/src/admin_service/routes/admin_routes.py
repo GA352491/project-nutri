@@ -24,6 +24,7 @@ from ..services.admin_service import (
     set_user_ai_plan_override,
     trigger_user_ai_plan,
     check_ai_auto_plan_enabled,
+    execute_devops_pipeline,
 )
 from ..schemas.admin_schemas import (
     CostCenterOverview,
@@ -32,6 +33,11 @@ from ..schemas.admin_schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin"])
+
+@router.post("/devops/trigger-pipeline")
+async def trigger_pipeline():
+    """Trigger the real automated 5-stage CI/CD and smoke gate pipeline."""
+    return await execute_devops_pipeline()
 
 @router.get("/dashboard", response_model=AdminDashboardResponse)
 async def dashboard():
