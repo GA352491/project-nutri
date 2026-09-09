@@ -69,9 +69,9 @@ const config = {
 const c = config[props.tier]
 
 const sizeClass = {
-  sm: { badge: 'badge-sm', icon: '11px', label: '10px', sub: '9px', gap: '4px' },
-  md: { badge: 'badge-md', icon: '13px', label: '12px', sub: '10px', gap: '6px' },
-  lg: { badge: 'badge-lg', icon: '15px', label: '14px', sub: '11px', gap: '8px' },
+  sm: { badge: 'badge-sm', icon: '11px', iconPx: 12, label: '10px', sub: '9px', gap: '4px' },
+  md: { badge: 'badge-md', icon: '13px', iconPx: 14, label: '12px', sub: '10px', gap: '6px' },
+  lg: { badge: 'badge-lg', icon: '15px', iconPx: 16, label: '14px', sub: '11px', gap: '8px' },
 }[props.size]
 </script>
 
@@ -92,8 +92,32 @@ const sizeClass = {
       :style="{ background: c.dot }"
     />
 
-    <!-- Icon -->
-    <span class="vbadge-icon" :style="{ fontSize: sizeClass.icon }">{{ c.icon }}</span>
+    <!-- Icon (Clean SVG) -->
+    <span class="vbadge-icon" :style="{ color: c.text }">
+      <!-- NCAHP Shield -->
+      <svg v-if="props.tier === 'ncahp_verified'" :width="sizeClass.iconPx" :height="sizeClass.iconPx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+      <!-- IDA Check Badge -->
+      <svg v-else-if="props.tier === 'ida_verified'" :width="sizeClass.iconPx" :height="sizeClass.iconPx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+      </svg>
+      <!-- Degree Verified -->
+      <svg v-else-if="props.tier === 'degree_verified'" :width="sizeClass.iconPx" :height="sizeClass.iconPx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
+        <path d="M6 12v5c3 3 9 3 12 0v-5"/>
+      </svg>
+      <!-- Pending Review -->
+      <svg v-else-if="props.tier === 'pending'" :width="sizeClass.iconPx" :height="sizeClass.iconPx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <!-- Unverified -->
+      <svg v-else :width="sizeClass.iconPx" :height="sizeClass.iconPx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+      </svg>
+    </span>
 
     <!-- Label -->
     <div v-if="showLabel" class="vbadge-text">

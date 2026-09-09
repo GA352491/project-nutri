@@ -93,10 +93,10 @@ async function submit() {
 
 // Timeline steps for status tracker
 const timeline = [
-  { id: 'submitted',  label: 'Application Submitted',     icon: '📝', desc: 'Your credentials are in the queue.' },
-  { id: 'registry',  label: 'Registry Check',             icon: '🏛️', desc: 'Ops checks NCAHP Central Register + IDA directory.' },
-  { id: 'degree',    label: 'Degree Verification',        icon: '🎓', desc: 'University confirms your qualification.' },
-  { id: 'approved',  label: 'Badge Issued',               icon: '🛡️', desc: 'Verified badge appears on your public profile.' },
+  { id: 'submitted',  label: 'Application Submitted',     type: 'doc',    desc: 'Your credentials are in the queue.' },
+  { id: 'registry',  label: 'Registry Check',             type: 'check',  desc: 'Ops checks NCAHP Central Register + IDA directory.' },
+  { id: 'degree',    label: 'Degree Verification',        type: 'degree', desc: 'University confirms your qualification.' },
+  { id: 'approved',  label: 'Badge Issued',               type: 'badge',  desc: 'Verified badge appears on your public profile.' },
 ]
 </script>
 
@@ -124,7 +124,9 @@ const timeline = [
     <!-- ── STEP 1: Profile ──────────────────────────────────────────────── -->
     <div v-if="step === 1" class="step-card">
       <div class="step-header">
-        <div class="step-emoji">👩‍⚕️</div>
+        <div class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
         <div>
           <h2 class="step-title">Join as a Nutrition Expert</h2>
           <p class="step-sub">Build your profile. Credentials are verified in Step 2 — we follow NCAHP &amp; IDA standards.</p>
@@ -192,7 +194,9 @@ const timeline = [
     <!-- ── STEP 2: Credentials ──────────────────────────────────────────── -->
     <div v-else-if="step === 2" class="step-card">
       <div class="step-header">
-        <div class="step-emoji">🏛️</div>
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+        </div>
         <div>
           <h2 class="step-title">Credential Verification</h2>
           <p class="step-sub">We check NCAHP Central Register &amp; IDA directory. Provide as much as you have — more = faster Gold badge.</p>
@@ -258,7 +262,9 @@ const timeline = [
 
       <!-- Doc upload notice -->
       <div class="doc-notice">
-        <span class="doc-notice-icon">📎</span>
+        <span class="w-6 h-6 rounded bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </span>
         <div>
           <div class="doc-notice-title">Document Upload</div>
           <div class="doc-notice-sub">After submitting, you'll receive an email with a secure link to upload your degree certificate, NCAHP/IDA registration certificate, and a masked government ID. All documents are reviewed by our ops team within 2–5 business days.</div>
@@ -278,10 +284,12 @@ const timeline = [
     <!-- ── STEP 3: Submitted / Status Tracker ──────────────────────────── -->
     <div v-else-if="step === 3" class="step-card step-card--success">
       <div class="success-hero">
-        <div class="success-icon">🎉</div>
-        <h2 class="step-title">Application Submitted!</h2>
+        <div class="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-600 flex items-center justify-center mx-auto mb-2">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h2 class="step-title">Application Submitted</h2>
         <p class="step-sub">
-          Thank you, <strong>{{ form.name }}</strong>. Our verification team will review your credentials
+          Thank you, <strong>{{ form.name }}</strong>. Our clinical verification team will review your credentials
           and issue your badge within 2–5 business days.
         </p>
         <VerificationBadge tier="pending" status="pending_review" size="lg" />
@@ -301,7 +309,10 @@ const timeline = [
             }"
           >
             <div class="ts-dot-wrap">
-              <div class="ts-dot">{{ idx === 0 ? '✓' : ts.icon }}</div>
+              <div class="ts-dot">
+                <svg v-if="idx === 0" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span v-else class="text-[0.7rem] font-bold">{{ idx + 1 }}</span>
+              </div>
               <div v-if="idx < timeline.length - 1" class="ts-connector" />
             </div>
             <div class="ts-body">
@@ -314,7 +325,10 @@ const timeline = [
 
       <!-- What to expect -->
       <div class="expect-card">
-        <div class="expect-title">📬 What happens next?</div>
+        <div class="expect-title flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          What happens next?
+        </div>
         <ul class="expect-list">
           <li>You'll receive an email with a <strong>secure document upload link</strong> within 30 minutes.</li>
           <li>Our ops team will cross-check your
