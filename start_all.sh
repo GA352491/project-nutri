@@ -10,6 +10,11 @@ FRONTEND="$ROOT/frontend"
 LOG_DIR="$ROOT/.logs"
 PID_FILE="$ROOT/.nutriplan.pids"
 
+# Ensure common system and runtime paths are available
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/Applications/Postgres.app/Contents/Versions/18/bin:$PATH"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
 mkdir -p "$LOG_DIR"
 
 GREEN="\033[0;32m"; YELLOW="\033[1;33m"; RED="\033[0;31m"; NC="\033[0m"

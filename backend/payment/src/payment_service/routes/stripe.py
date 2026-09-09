@@ -8,6 +8,7 @@ from ..schemas.payment_schemas import (
     ConnectInitRequest,
     BookingPaymentRequest,
     SetupIntentRequest,
+    HostedCheckoutRequest,
     PayoutTransferRequest,
 )
 
@@ -132,6 +133,31 @@ async def create_setup_intent(req: SetupIntentRequest):
         }
     except stripe.StripeError as e:
         raise HTTPException(status_code=502, detail=f"Stripe error: {e.user_message}")
+
+
+@router.post("/checkout/session")
+async def create_checkout_session(req: HostedCheckoutRequest):
+    """
+    Creates an official Stripe Checkout Session for recurring plan subscriptions.
+    Returns the real Stripe-hosted checkout URL for web and mobile browsers.
+    """
+    try:
+        session_data = stripe_provider.create_checkout_session(
+            tier=req.tier,
+            user_id=req.user_id,
+            success_url=req.success_url,
+            cancel_url=req.cancel_url,
+            metadata=req.metadata,
+        )
+        return {
+            "status": "success",
+            "checkout_url": session_data["checkout_url"],
+            "session_id": session_data["session_id"],
+        }
+    except stripe.StripeError as e:
+        raise HTTPException(status_code=502, detail=f"Stripe Checkout error: {e.user_message}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Checkout initialization error: {str(e)}")
 
 
 @router.post("/webhook")

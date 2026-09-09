@@ -17,11 +17,14 @@ FREE & OPEN SOURCE: https://github.com/airtai/faststream
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 from faststream import FastStream
 from faststream.redis import RedisBroker
 from pydantic import BaseModel
 
+_REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+_TEMPORAL_HOST: str = os.getenv("TEMPORAL_HOST_PORT", "localhost:7233")
 
 # ── Message Schemas ───────────────────────────────────────────────────────────
 
@@ -48,7 +51,7 @@ class AppointmentBookedEvent(BaseModel):
 
 # ── Broker Setup ──────────────────────────────────────────────────────────────
 
-broker = RedisBroker("redis://localhost:6379")
+broker = RedisBroker(_REDIS_URL)
 app = FastStream(broker)
 
 
@@ -84,7 +87,7 @@ async def on_appointment_booked(event: AppointmentBookedEvent):
     from temporalio.client import Client
     print(f"[FastStream] appointment_booked: {event.appointment_id}, triggering Temporal workflow...")
     try:
-        client = await Client.connect("localhost:7233")
+        client = await Client.connect(_TEMPORAL_HOST)
         await client.start_workflow(
             "BookingWorkflow",
             args=[

@@ -14,56 +14,17 @@ from ..schemas.chat_schemas import (
     ThreadSummaryResponse,
 )
 
-# ── Global In-Memory Persistent Store (with MongoDB integration) ──────────────
-_ROOM_MESSAGES: Dict[str, List[Dict[str, Any]]] = {
-    "test@test.com_expert@nutriplan.local": [
-        {
-            "id": "msg_init_test_1",
-            "room_id": "test@test.com_expert@nutriplan.local",
-            "sender": "patient",
-            "sender_email": "test@test.com",
-            "recipient_email": "expert@nutriplan.local",
-            "text": "Hello Dr. Sarah (expert@nutriplan.local), I am submitting my clinical intake request. I would like your guidance on optimizing my macros for energy and fat loss with South Indian regional foods (1800 kcal / 120g Protein).",
-            "time": "10:30 AM",
-            "timestamp": "2026-08-27T10:30:00Z",
-            "attachment": {
-                "type": "lab_report",
-                "title": "Intake Health Bio & Macro Target Form (test@test.com)",
-                "meta": "1800 kcal · Fasting Glucose 114 mg/dL · 8,400 daily steps"
-            }
-        }
-    ],
-    "usr_1_expert@nutriplan.local": [
-        {
-            "id": "m1",
-            "room_id": "usr_1_expert@nutriplan.local",
-            "sender": "patient",
-            "sender_email": "rohan@nutriplan.local",
-            "recipient_email": "expert@nutriplan.local",
-            "text": "Good morning Dr. Sarah! Here is my morning fasting glucose reading.",
-            "time": "09:15 AM",
-            "timestamp": "2026-08-27T09:15:00Z",
-        },
-        {
-            "id": "m2",
-            "room_id": "usr_1_expert@nutriplan.local",
-            "sender": "expert",
-            "sender_email": "expert@nutriplan.local",
-            "recipient_email": "rohan@nutriplan.local",
-            "text": "Good morning Rohan! That looks well within our target range (<120 mg/dL). How did you feel after the 15-minute walk yesterday evening?",
-            "time": "09:25 AM",
-            "timestamp": "2026-08-27T09:25:00Z",
-        }
-    ]
-}
+# ── Global In-Memory Persistent Store ────────────────────────────────────────
+# Starts empty — all messages come from real patient/expert WebSocket interactions
+_ROOM_MESSAGES: Dict[str, List[Dict[str, Any]]] = {}
 
-_THREAD_STATUSES: Dict[str, str] = {
-    "test@test.com_expert@nutriplan.local": "pending",
-    "usr_1_expert@nutriplan.local": "active",
-    "usr_2_expert@nutriplan.local": "active",
-    "usr_3_expert@nutriplan.local": "active",
-    "usr_4_expert@nutriplan.local": "active",
-}
+# Thread status: 'pending' | 'active' | 'declined'
+# Defaults to 'pending' for new rooms so experts must accept before chat unlocks.
+_THREAD_STATUSES: Dict[str, str] = {}
+
+# Rich metadata per room for expert intake panel
+# { room_id: { patient_email, patient_name, expert_email, intake_summary, initiated_at } }
+_THREAD_METADATA: Dict[str, Dict[str, Any]] = {}
 
 
 class ConnectionManager:
@@ -171,7 +132,65 @@ def set_thread_status(room_id: str, status: str) -> None:
 
 
 def get_thread_status(room_id: str) -> str:
-    return _THREAD_STATUSES.get(room_id, "active")
+    """Returns thread status; defaults to 'pending' for new/unknown rooms."""
+    return _THREAD_STATUSES.get(room_id, "pending")
+
+
+# ── Thread Metadata Helpers ───────────────────────────────────────────────────
+
+def set_thread_metadata(
+    room_id: str,
+    patient_email: str,
+    expert_email: str,
+    patient_name: str = "",
+    intake_summary: str = "",
+) -> None:
+    """Store or update intake metadata for a clinical room."""
+    if room_id not in _THREAD_METADATA:
+        _THREAD_METADATA[room_id] = {
+            "patient_email": patient_email,
+            "expert_email": expert_email,
+            "patient_name": patient_name or patient_email.split("@")[0].title(),
+            "intake_summary": intake_summary,
+            "initiated_at": datetime.utcnow().isoformat(),
+        }
+    else:
+        # Allow updating name/summary without overwriting timestamps
+        if patient_name:
+            _THREAD_METADATA[room_id]["patient_name"] = patient_name
+        if intake_summary:
+            _THREAD_METADATA[room_id]["intake_summary"] = intake_summary
+
+
+def get_thread_metadata(room_id: str) -> Dict[str, Any]:
+    return _THREAD_METADATA.get(room_id, {})
+
+
+def get_threads_for_expert(expert_email: str) -> List[Dict[str, Any]]:
+    """Return all threads involving this expert email, with metadata and last message."""
+    expert_lower = expert_email.strip().lower()
+    threads = []
+    for room_id, status in _THREAD_STATUSES.items():
+        if expert_lower not in room_id:
+            continue
+        meta = _THREAD_METADATA.get(room_id, {})
+        messages = _ROOM_MESSAGES.get(room_id, [])
+        last_msg = messages[-1] if messages else {}
+        threads.append({
+            "room_id": room_id,
+            "status": status,
+            "patient_email": meta.get("patient_email", ""),
+            "patient_name": meta.get("patient_name", ""),
+            "expert_email": meta.get("expert_email", expert_email),
+            "intake_summary": meta.get("intake_summary", ""),
+            "initiated_at": meta.get("initiated_at", ""),
+            "last_message": last_msg.get("text", "No messages yet"),
+            "last_time": last_msg.get("time", ""),
+            "unread_count": sum(1 for m in messages if m.get("sender") == "patient"),
+        })
+    # Sort: pending first, then by latest activity
+    threads.sort(key=lambda t: (0 if t["status"] == "pending" else 1, t.get("initiated_at", "")), reverse=False)
+    return threads
 
 
 # ── Legacy backward-compatibility methods ─────────────────────────────────────

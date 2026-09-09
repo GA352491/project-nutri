@@ -4,24 +4,18 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-# Register all 11 NutriPlan microservices
+from nutriplan_shared.service_registry import SERVICES_CATALOGUE
+
+# Build services dynamically from centralized service_registry
 SERVICES = [
-    {"name": "Auth Service", "key": "auth", "url": "http://localhost:8001", "docs": "http://localhost:8001/docs", "prefix": "/api/v1/auth"},
-    {"name": "Profile & Onboarding Service", "key": "profile", "url": "http://localhost:8003", "docs": "http://localhost:8003/docs", "prefix": "/api/v1/profile"},
-    {"name": "Recipe & Food DB Service", "key": "recipe", "url": "http://localhost:8004", "docs": "http://localhost:8004/docs", "prefix": "/api/v1/recipes"},
-    {"name": "Food Diary Service", "key": "diary", "url": "http://localhost:8005", "docs": "http://localhost:8005/docs", "prefix": "/api/v1/diary"},
-    {"name": "Grocery List Service", "key": "grocery", "url": "http://localhost:8006", "docs": "http://localhost:8006/docs", "prefix": "/api/v1/grocery"},
-    {"name": "Meal Plan Engine Service", "key": "meal_plan", "url": "http://localhost:8009", "docs": "http://localhost:8009/docs", "prefix": "/api/v1/plan"},
-    {"name": "Notifications Service", "key": "notifications", "url": "http://localhost:8010", "docs": "http://localhost:8010/docs", "prefix": "/api/v1/notifications"},
-    {"name": "AI Chatbot Service", "key": "chat", "url": "http://localhost:8012", "docs": "http://localhost:8012/docs", "prefix": "/api/v1/chat"},
-    {"name": "Appointments Service", "key": "appointment", "url": "http://localhost:8013", "docs": "http://localhost:8013/docs", "prefix": "/api/v1/appointments"},
-    {"name": "Video Consultation Service", "key": "video", "url": "http://localhost:8014", "docs": "http://localhost:8014/docs", "prefix": "/api/v1/video"},
-    {"name": "Payment Service", "key": "payment", "url": "http://localhost:8016", "docs": "http://localhost:8016/docs", "prefix": "/api/v1/payment"},
-    {"name": "Delivery Service", "key": "delivery", "url": "http://localhost:8017", "docs": "http://localhost:8017/docs", "prefix": "/api/v1/delivery"},
-    {"name": "Wearable Service", "key": "wearable", "url": "http://localhost:8018", "docs": "http://localhost:8018/docs", "prefix": "/api/v1/wearable"},
-    {"name": "Marketplace Service", "key": "marketplace", "url": "http://localhost:8025", "docs": "http://localhost:8025/docs", "prefix": "/api/v1/marketplace"},
-    {"name": "Compliance Service", "key": "compliance", "url": "http://localhost:8002", "docs": "http://localhost:8002/docs", "prefix": "/api/v1/compliance"},
-    {"name": "Subscriptions Service", "key": "subscriptions", "url": "http://localhost:8007", "docs": "http://localhost:8007/docs", "prefix": "/api/v1/subscriptions"},
+    {
+        "name": s["name"],
+        "key": s["key"],
+        "url": s["url"],
+        "docs": f"{s['url']}/docs",
+        "prefix": s["prefix"],
+    }
+    for s in SERVICES_CATALOGUE
 ]
 
 async def fetch_service_health() -> List[Dict[str, Any]]:

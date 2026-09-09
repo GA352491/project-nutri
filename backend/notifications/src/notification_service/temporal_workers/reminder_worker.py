@@ -14,8 +14,18 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio.common import RetryPolicy
 
-NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8010")
-TEMPORAL_HOST = os.getenv("TEMPORAL_HOST_PORT", "localhost:7233")
+# Service URLs — use service registry default; override via env if needed
+try:
+    from nutriplan_shared.service_registry import NOTIFICATION_URL as _NOTIF_DEFAULT
+except ImportError:
+    _svc = os.getenv
+    _scheme = os.getenv("APP_SCHEME", "http")
+    _domain = os.getenv("APP_DOMAIN", "localhost")
+    _port   = os.getenv("APP_PORT_NOTIFICATION", "8010")
+    _NOTIF_DEFAULT = f"{_scheme}://{_domain}:{_port}"
+
+NOTIFICATION_SERVICE_URL: str = os.getenv("NOTIFICATION_SERVICE_URL", _NOTIF_DEFAULT)
+TEMPORAL_HOST: str = os.getenv("TEMPORAL_HOST_PORT", "localhost:7233")
 
 
 # ── Activities ──────────────────────────────────────────────────────────────

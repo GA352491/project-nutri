@@ -3,31 +3,23 @@ import httpx
 from typing import Optional, List, Dict, Any
 from ..schemas.admin_schemas import AdminDashboardResponse, DashboardStats, SystemHealth
 
-SERVICES = [
-    ("auth-service", "http://localhost:8001/health"),
-    ("compliance-service", "http://localhost:8002/health"),
-    ("profile-service", "http://localhost:8003/health"),
-    ("recipe-service", "http://localhost:8004/health"),
-    ("diary-service", "http://localhost:8005/health"),
-    ("grocery-service", "http://localhost:8006/health"),
-    ("subscription-service", "http://localhost:8007/health"),
-    ("meal-plan-service", "http://localhost:8009/health"),
-    ("notification-service", "http://localhost:8010/health"),
-    ("food-recognition-service", "http://localhost:8011/health"),
-    ("chat-service", "http://localhost:8012/health"),
-    ("appointment-service", "http://localhost:8013/health"),
-    ("video-service", "http://localhost:8014/health"),
-    ("ai-chatbot-service", "http://localhost:8015/health"),
-    ("payment-service", "http://localhost:8016/health"),
-    ("delivery-service", "http://localhost:8017/health"),
-    ("wearable-service", "http://localhost:8018/health"),
-    ("marketplace-service", "http://localhost:8025/health"),
-]
+from nutriplan_shared.service_registry import (
+    SERVICES_HEALTH_MAP,
+    AUTH_URL,
+    RECIPE_URL,
+    SUBSCRIPTION_URL,
+    MARKETPLACE_URL,
+    MEAL_PLAN_URL,
+    NOTIFICATION_URL,
+    TEMPORAL_UI_URL,
+)
+
+SERVICES = SERVICES_HEALTH_MAP
 
 
 async def _count_users(client: httpx.AsyncClient) -> int:
     try:
-        res = await client.get("http://localhost:8001/api/v1/auth/users")
+        res = await client.get(f"{AUTH_URL}/api/v1/auth/users")
         if res.status_code == 200:
             return len(res.json())
     except Exception:
@@ -37,7 +29,7 @@ async def _count_users(client: httpx.AsyncClient) -> int:
 
 async def _count_recipes(client: httpx.AsyncClient) -> int:
     try:
-        res = await client.get("http://localhost:8004/api/v1/recipes/")
+        res = await client.get(f"{RECIPE_URL}/api/v1/recipes/")
         if res.status_code == 200:
             data = res.json()
             return len(data) if isinstance(data, list) else 0
@@ -48,7 +40,7 @@ async def _count_recipes(client: httpx.AsyncClient) -> int:
 
 async def _count_subscriptions(client: httpx.AsyncClient) -> int:
     try:
-        res = await client.get("http://localhost:8007/api/v1/subscriptions/admin/count")
+        res = await client.get(f"{SUBSCRIPTION_URL}/api/v1/subscriptions/admin/count")
         if res.status_code == 200:
             data = res.json()
             return data.get("active", 0)
@@ -97,7 +89,7 @@ async def get_analytics_data() -> dict:
         # Revenue from subscriptions
         sub_revenue = 0.0
         try:
-            res = await client.get("http://localhost:8007/api/v1/subscriptions/admin/revenue")
+            res = await client.get(f"{SUBSCRIPTION_URL}/api/v1/subscriptions/admin/revenue")
             if res.status_code == 200:
                 sub_revenue = res.json().get("total_revenue_usd", 0.0)
         except Exception:
@@ -106,7 +98,7 @@ async def get_analytics_data() -> dict:
         # Marketplace commissions from marketplace service
         marketplace_rev = 0.0
         try:
-            res = await client.get("http://localhost:8025/api/v1/marketplace/admin/commissions")
+            res = await client.get(f"{MARKETPLACE_URL}/api/v1/marketplace/admin/commissions")
             if res.status_code == 200:
                 marketplace_rev = res.json().get("total_commissions_usd", 0.0)
         except Exception:
@@ -376,7 +368,7 @@ async def trigger_user_ai_plan(user_id: str, caloric_target: int = 1800, region:
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             res = await client.post(
-                "http://localhost:8009/api/v1/plan/generate/regional",
+                f"{MEAL_PLAN_URL}/api/v1/plan/generate/regional",
                 json={
                     "user_id": user_id,
                     "caloric_target": caloric_target,
@@ -467,7 +459,7 @@ async def dispatch_global_broadcast(req: BroadcastNotificationRequest) -> Broadc
     async with httpx.AsyncClient(timeout=3.0) as client:
         try:
             await client.post(
-                "http://localhost:8010/api/v1/notifications/internal/create",
+                f"{NOTIFICATION_URL}/api/v1/notifications/internal/create",
                 json={
                     "user_id": "00000000-0000-0000-0000-000000000000",  # broadcast sentinel
                     "title": f"[{req.severity.upper()}] {req.title}",
@@ -676,7 +668,7 @@ async def get_cost_center_overview() -> CostCenterOverview:
     dynamic_user_burners: list[UserBurnMetric] = []
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            res = await client.get("http://localhost:8001/api/v1/auth/users")
+            res = await client.get(f"{AUTH_URL}/api/v1/auth/users")
             if res.status_code == 200:
                 user_list = res.json()
                 for idx, u in enumerate(user_list[:10]):
@@ -813,11 +805,11 @@ async def execute_devops_pipeline() -> Dict[str, Any]:
 
     # Stage 3: Live Temporal Server Probe
     s3_start = time.perf_counter()
-    log("Stage 3/5: Probing Temporal durable orchestrator on localhost:8233 / :7233...")
+    log(f"Stage 3/5: Probing Temporal durable orchestrator on {TEMPORAL_UI_URL}...")
     temporal_active = False
     async with httpx.AsyncClient(timeout=1.5) as client:
         try:
-            tr = await client.get("http://localhost:8233")
+            tr = await client.get(TEMPORAL_UI_URL)
             if tr.status_code in [200, 301, 302]:
                 temporal_active = True
         except Exception:

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { Line as LineChart, Bar as BarChart, Doughnut as DoughnutChart } from 'vue-chartjs'
 import {
  Chart as ChartJS, CategoryScale, LinearScale, PointElement,
@@ -302,20 +302,51 @@ const cgmChartOptions = {
  }
 }
 
-// Live CGM status (simulated current reading)
-const liveCgmReading = ref(92)
+// ─── CGM Glucose Simulator & Live Sensor Feed ────────────────────────────────
+const cgmScenario = ref<'fiber_first' | 'carbs_first' | 'fasting'>('fiber_first')
+const liveCgmReading = ref(98.4)
+const cgmTrend = ref('→')
+const cgmTirPct = ref(88.0)
+const cgmEa1c = ref(5.2)
+const cgmCvPct = ref(16.5)
+const cgmActiveAlert = ref<{ severity: string; message: string } | null>(null)
+
 const cgmRiskLabel = computed(() => {
- if (liveCgmReading.value < 70) return { label: 'Low — Eat Fast-Carbs', color: 'text-amber-600', bg: 'bg-amber-500/15 border-amber-300' }
- if (liveCgmReading.value <= 140) return { label: 'In Range ✅', color: 'text-emerald-600', bg: 'bg-emerald-500/15 border-emerald-300' }
- if (liveCgmReading.value <= 180) return { label: 'Elevated — Monitor', color: 'text-orange-600', bg: 'bg-orange-500/15 border-orange-300' }
- return { label: 'High — Take Action', color: 'text-red-600', bg: 'bg-red-500/15 border-red-300' }
+  if (liveCgmReading.value < 70) return { label: 'Low — Eat Fast-Carbs', color: 'text-amber-600', bg: 'bg-amber-500/15 border-amber-300' }
+  if (liveCgmReading.value <= 140) return { label: 'In Range ✅', color: 'text-emerald-600', bg: 'bg-emerald-500/15 border-emerald-300' }
+  if (liveCgmReading.value <= 180) return { label: 'Elevated — Monitor', color: 'text-orange-600', bg: 'bg-orange-500/15 border-orange-300' }
+  return { label: 'High — Take Action', color: 'text-red-600', bg: 'bg-red-500/15 border-red-300' }
 })
 
-// Simulate a tick every 5s nudging glucose slightly
-setInterval(() => {
- const delta = (Math.random() - 0.48) * 1.5
- liveCgmReading.value = Math.min(200, Math.max(65, Math.round((liveCgmReading.value + delta) * 10) / 10))
-}, 5000)
+async function refreshLiveCgm() {
+  const data = await wearable.fetchLiveCgm(auth.user?.id || 'user_123', cgmScenario.value)
+  if (data) {
+    liveCgmReading.value = data.current_glucose_mg_dl
+    cgmTrend.value = data.trend_arrow || '→'
+    cgmTirPct.value = data.time_in_range_pct
+    cgmEa1c.value = data.estimated_hba1c
+    cgmCvPct.value = data.glycemic_variability_cv_pct
+    cgmActiveAlert.value = data.active_alert || null
+  }
+}
+
+async function setCgmScenario(scen: 'fiber_first' | 'carbs_first' | 'fasting') {
+  cgmScenario.value = scen
+  await refreshLiveCgm()
+  notify(`CGM Sensor Scenario switched to: ${scen.replace('_', ' ').toUpperCase()}`)
+}
+
+let cgmTimer: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  wearable.fetchSummary(auth.user?.id || 'user_123')
+  refreshLiveCgm()
+  cgmTimer = setInterval(refreshLiveCgm, 8000)
+})
+
+onUnmounted(() => {
+  if (cgmTimer) clearInterval(cgmTimer)
+})
 </script>
 
 <template>
@@ -528,27 +559,71 @@ setInterval(() => {
       <span class="font-data text-[0.8rem] text-ink-muted">24-Hour Interstitial Glucose Readings</span>
     </div>
 
+    <!-- Scenario Switcher -->
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-canvas-raised p-3 rounded-2xl border border-border">
+      <div class="flex items-center gap-2">
+        <span class="font-data text-[0.75rem] text-ink-muted uppercase tracking-wider font-semibold">Sensor Scenario:</span>
+        <div class="flex items-center gap-1.5">
+          <button 
+            @click="setCgmScenario('fiber_first')" 
+            :class="['px-3 py-1.5 rounded-lg text-[0.78rem] font-semibold transition-all', cgmScenario === 'fiber_first' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-canvas text-ink-muted hover:text-ink']"
+          >
+            🟢 Fiber + Protein First
+          </button>
+          <button 
+            @click="setCgmScenario('carbs_first')" 
+            :class="['px-3 py-1.5 rounded-lg text-[0.78rem] font-semibold transition-all', cgmScenario === 'carbs_first' ? 'bg-red-600 text-white shadow-sm' : 'bg-canvas text-ink-muted hover:text-ink']"
+          >
+            🔴 Carbs First (High Excursion)
+          </button>
+          <button 
+            @click="setCgmScenario('fasting')" 
+            :class="['px-3 py-1.5 rounded-lg text-[0.78rem] font-semibold transition-all', cgmScenario === 'fasting' ? 'bg-blue-600 text-white shadow-sm' : 'bg-canvas text-ink-muted hover:text-ink']"
+          >
+            🔵 Basal Fasting
+          </button>
+        </div>
+      </div>
+      <button 
+        @click="refreshLiveCgm" 
+        class="text-[0.75rem] font-data text-primary hover:underline flex items-center gap-1"
+      >
+        ↻ Refresh Sensor Telemetry
+      </button>
+    </div>
+
+    <!-- Active CGM Alert -->
+    <div v-if="cgmActiveAlert" :class="['p-4 rounded-xl border flex items-center justify-between gap-3', cgmActiveAlert.severity === 'CRITICAL' ? 'bg-red-500/15 border-red-300 text-red-700' : 'bg-amber-500/15 border-amber-300 text-amber-700']">
+      <div class="flex items-center gap-2.5">
+        <span class="text-xl">⚠️</span>
+        <span class="font-body text-[0.85rem] font-medium">{{ cgmActiveAlert.message }}</span>
+      </div>
+    </div>
+
     <!-- Live Status Row -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <div :class="['border rounded-2xl p-4 text-center', cgmRiskLabel.bg]">
-        <div class="font-display font-bold text-[2rem] tabular-nums" :class="cgmRiskLabel.color">{{ liveCgmReading }}</div>
-        <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">mg/dL · Current</div>
+        <div class="font-display font-bold text-[2rem] tabular-nums flex items-center justify-center gap-1.5" :class="cgmRiskLabel.color">
+          <span>{{ liveCgmReading }}</span>
+          <span class="text-[1.2rem] font-mono">{{ cgmTrend }}</span>
+        </div>
+        <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">mg/dL · FreeStyle Libre 3</div>
         <div class="font-body text-[0.78rem] font-semibold mt-1" :class="cgmRiskLabel.color">{{ cgmRiskLabel.label }}</div>
       </div>
       <div class="border border-border rounded-2xl p-4 text-center bg-canvas-raised">
-        <div class="font-display font-bold text-[2rem] text-emerald-600 tabular-nums">3.2</div>
+        <div class="font-display font-bold text-[2rem] text-emerald-600 tabular-nums">{{ (liveCgmReading / 18.0).toFixed(1) }}</div>
         <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">mmol/L · Equivalent</div>
-        <div class="font-body text-[0.78rem] font-semibold mt-1 text-emerald-600">Normal</div>
+        <div class="font-body text-[0.78rem] font-semibold mt-1 text-emerald-600">CV: {{ cgmCvPct }}% (Target &lt;36%)</div>
       </div>
       <div class="border border-border rounded-2xl p-4 text-center bg-canvas-raised">
-        <div class="font-display font-bold text-[2rem] text-blue-600 tabular-nums">87%</div>
+        <div class="font-display font-bold text-[2rem] text-blue-600 tabular-nums">{{ cgmTirPct }}%</div>
         <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">Time In Range (TIR)</div>
-        <div class="font-body text-[0.78rem] font-semibold mt-1 text-blue-600">Target: &gt;70%</div>
+        <div class="font-body text-[0.78rem] font-semibold mt-1 text-blue-600">Target: &gt;70% (70–140 mg/dL)</div>
       </div>
       <div class="border border-border rounded-2xl p-4 text-center bg-canvas-raised">
-        <div class="font-display font-bold text-[2rem] text-purple-600 tabular-nums">5.4%</div>
-        <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">Est. HbA1c</div>
-        <div class="font-body text-[0.78rem] font-semibold mt-1 text-purple-600">Optimal</div>
+        <div class="font-display font-bold text-[2rem] text-purple-600 tabular-nums">{{ cgmEa1c }}%</div>
+        <div class="font-data text-[0.7rem] uppercase tracking-wider text-ink-muted mt-0.5">Est. HbA1c (GMI)</div>
+        <div class="font-body text-[0.78rem] font-semibold mt-1 text-purple-600">ADA/EASD Clinical Model</div>
       </div>
     </div>
 

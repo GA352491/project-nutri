@@ -3,6 +3,8 @@ import { ref, onMounted } from 'vue'
 import { loadStripe, type Stripe, type StripeElements, type StripePaymentElement } from '@stripe/stripe-js'
 import Button from '../../components/ui/Button.vue'
 import SlotPicker from '../../components/SlotPicker.vue'
+import VerificationBadge from '../../components/VerificationBadge.vue'
+import type { BadgeTier, VerificationStatus } from '../../stores/verification'
 import apiClient from '../../api'
 
 // Stripe setup — using Stripe's public test key by default
@@ -41,6 +43,11 @@ onMounted(async () => {
  rate: n.hourly_rate_usd || 50,
  stripeAccountId: n.stripe_account_id,
  available_slots: n.available_slots || ['10:00 AM', '02:00 PM', '05:00 PM'],
+ badgeTier: (n.badge_tier as BadgeTier) || (n.ncahp_reg_number ? 'ncahp_verified' : n.ida_membership_number ? 'ida_verified' : 'degree_verified'),
+ verificationStatus: (n.verification_status as VerificationStatus) || 'verified',
+ ncahpRegNumber: n.ncahp_reg_number,
+ idaMembershipNumber: n.ida_membership_number,
+ degreeInstitution: n.degree_institution,
  }))
  } else {
  nutritionists.value = []
@@ -204,8 +211,17 @@ onMounted(() => {
  >
  <img :src="n.avatar" class="w-12 h-12 rounded-full object-cover border-2 border-border" />
  <div class="flex-1 min-w-0">
- <h3 class="font-display font-semibold text-ink text-[0.95rem]">{{ n.name }}</h3>
+  <div class="flex items-center gap-2 flex-wrap">
+    <h3 class="font-display font-semibold text-ink text-[0.95rem]">{{ n.name }}</h3>
+    <VerificationBadge :tier="n.badgeTier || 'degree_verified'" :status="n.verificationStatus || 'verified'" size="sm" />
+  </div>
  <p class="font-body text-[0.78rem] text-ink-muted truncate">{{ n.spec }}</p>
+  <p v-if="n.ncahpRegNumber" class="font-data text-[0.7rem] text-emerald-600 truncate">
+    NCAHP Reg: {{ n.ncahpRegNumber }}
+  </p>
+  <p v-else-if="n.idaMembershipNumber" class="font-data text-[0.7rem] text-blue-600 truncate">
+    IDA Membership: {{ n.idaMembershipNumber }}
+  </p>
  </div>
  <div class="flex flex-col items-end gap-1 font-data shrink-0">
  <div class="flex items-center gap-1 text-[0.82rem] font-bold text-warning">
@@ -244,7 +260,10 @@ onMounted(() => {
  <div class="space-y-2.5 mb-5">
  <div class="flex justify-between items-center">
  <span class="font-body text-[0.9rem] text-ink-muted">Expert</span>
- <span class="font-body text-[0.9rem] font-semibold text-ink">{{ selectedNutri.name }}</span>
+ <div class="flex items-center gap-1.5">
+   <span class="font-body text-[0.9rem] font-semibold text-ink">{{ selectedNutri.name }}</span>
+   <VerificationBadge :tier="selectedNutri.badgeTier || 'degree_verified'" :status="selectedNutri.verificationStatus || 'verified'" size="sm" :show-label="false" />
+ </div>
  </div>
  <div class="flex justify-between items-center">
  <span class="font-body text-[0.9rem] text-ink-muted">Date & Time</span>

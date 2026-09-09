@@ -3,82 +3,200 @@ import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 
-class FoodRecognitionResult {
-  final String foodName;
+/// Represents a single recognized food item from the AI Vision Engine.
+class RecognizedFoodItem {
+  final String name;
   final double confidence;
-  final int estimatedCalories;
-  final int proteinG;
-  final int carbsG;
-  final int fatG;
-  final String portionEstimate;
+  final double portionG;
+  final double calories;
+  final double proteinG;
+  final double carbsG;
+  final double fatG;
+  final double fiberG;
+  final String? region;
 
-  FoodRecognitionResult({
-    required this.foodName,
+  const RecognizedFoodItem({
+    required this.name,
     required this.confidence,
-    required this.estimatedCalories,
+    required this.portionG,
+    required this.calories,
     required this.proteinG,
     required this.carbsG,
     required this.fatG,
-    required this.portionEstimate,
+    required this.fiberG,
+    this.region,
   });
 
-  factory FoodRecognitionResult.fromJson(Map<String, dynamic> json) {
-    return FoodRecognitionResult(
-      foodName: json['food_name'] ?? json['name'] ?? 'Identified Meal',
-      confidence: (json['confidence'] ?? 0.92).toDouble(),
-      estimatedCalories: (json['estimated_calories'] ?? json['calories'] ?? 350).toInt(),
-      proteinG: (json['protein_g'] ?? 15).toInt(),
-      carbsG: (json['carbs_g'] ?? 40).toInt(),
-      fatG: (json['fat_g'] ?? 10).toInt(),
-      portionEstimate: json['portion_estimate'] ?? '1 bowl (approx. 250g)',
+  factory RecognizedFoodItem.fromJson(Map<String, dynamic> json) {
+    return RecognizedFoodItem(
+      name: (json['name'] as String? ?? 'Unknown item').trim(),
+      confidence: (json['confidence'] as num? ?? 0.0).toDouble(),
+      portionG: (json['portion_g'] as num? ?? 0.0).toDouble(),
+      calories: (json['calories'] as num? ?? 0.0).toDouble(),
+      proteinG: (json['protein_g'] as num? ?? 0.0).toDouble(),
+      carbsG: (json['carbs_g'] as num? ?? 0.0).toDouble(),
+      fatG: (json['fat_g'] as num? ?? 0.0).toDouble(),
+      fiberG: (json['fiber_g'] as num? ?? 0.0).toDouble(),
+      region: json['region'] as String?,
     );
   }
 }
 
+/// Full meal analysis result returned by the Vision Engine.
+class FoodRecognitionResult {
+  final String imageId;
+  final List<RecognizedFoodItem> items;
+  final double totalCalories;
+  final double totalProteinG;
+  final double totalCarbsG;
+  final double totalFatG;
+  final String mealTypeGuess;
+  final List<String> complianceWarnings;
+
+  const FoodRecognitionResult({
+    required this.imageId,
+    required this.items,
+    required this.totalCalories,
+    required this.totalProteinG,
+    required this.totalCarbsG,
+    required this.totalFatG,
+    required this.mealTypeGuess,
+    required this.complianceWarnings,
+  });
+
+  /// Combined display name of all identified food items.
+  String get displayFoodName {
+    if (items.isEmpty) return 'Unidentified Meal';
+    return items.map((i) => i.name).join(' + ');
+  }
+
+  /// Portion display string (total weight across items).
+  String get portionDisplay {
+    final totalG = items.fold<double>(0, (sum, i) => sum + i.portionG);
+    return totalG > 0 ? '~${totalG.toStringAsFixed(0)}g serving' : 'Estimated portion';
+  }
+
+  /// Average confidence across all items (0.0 – 1.0).
+  double get averageConfidence {
+    if (items.isEmpty) return 0.0;
+    return items.fold<double>(0, (sum, i) => sum + i.confidence) / items.length;
+  }
+
+  factory FoodRecognitionResult.fromJson(Map<String, dynamic> json) {
+    final rawItems = (json['items'] as List<dynamic>? ?? []);
+    final items = rawItems
+        .whereType<Map<String, dynamic>>()
+        .map((i) => RecognizedFoodItem.fromJson(i))
+        .toList();
+
+    return FoodRecognitionResult(
+      imageId: json['image_id'] as String? ?? '',
+      items: items,
+      totalCalories: (json['total_calories'] as num? ?? 0.0).toDouble(),
+      totalProteinG: (json['total_protein_g'] as num? ?? 0.0).toDouble(),
+      totalCarbsG: (json['total_carbs_g'] as num? ?? 0.0).toDouble(),
+      totalFatG: (json['total_fat_g'] as num? ?? 0.0).toDouble(),
+      mealTypeGuess: json['meal_type_guess'] as String? ?? 'meal',
+      complianceWarnings: (json['compliance_warnings'] as List<dynamic>? ?? [])
+          .whereType<String>()
+          .toList(),
+    );
+  }
+}
+
+/// Exceptions thrown by [FoodRecognitionService].
+class FoodRecognitionException implements Exception {
+  final String message;
+  final int? statusCode;
+  const FoodRecognitionException(this.message, {this.statusCode});
+
+  @override
+  String toString() => 'FoodRecognitionException: $message';
+}
+
+/// Communicates with the NutriPlan Vision Engine backend.
+/// Endpoint: POST /api/v1/food-recognition/analyze (multipart form data)
 class FoodRecognitionService {
   final ApiClient _apiClient = ApiClient();
 
-  Future<FoodRecognitionResult> analyzePhoto(File imageFile) async {
-    try {
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
-          imageFile.path,
-          filename: 'meal_photo.jpg',
-        ),
-        'user_region': 'outside_cafe',
-        'auto_log': 'false',
-      });
+  /// Analyzes a food image file via the live Vision Engine.
+  ///
+  /// Throws [FoodRecognitionException] on error — no silent fallbacks.
+  Future<FoodRecognitionResult> analyzePhoto(
+    File imageFile, {
+    String userRegion = 'india',
+    bool autoLog = false,
+  }) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        imageFile.path,
+        filename: 'meal_photo.jpg',
+        contentType: DioMediaType('image', 'jpeg'),
+      ),
+      'user_region': userRegion,
+      'auto_log': autoLog.toString(),
+    });
 
+    try {
       final response = await _apiClient.dio.post(
         '${ApiEndpoints.visionBaseUrl}/analyze',
         data: formData,
+        options: Options(
+          headers: {'Content-Type': 'multipart/form-data'},
+          receiveTimeout: const Duration(seconds: 60), // LLaVA can be slow
+          sendTimeout: const Duration(seconds: 30),
+        ),
       );
 
-      final data = response.data;
-      if (data != null && data['items'] != null && (data['items'] as List).isNotEmpty) {
-        final firstItem = data['items'][0];
-        final allItemsTitle = (data['items'] as List).map((i) => i['name'] ?? '').join(' + ');
-        return FoodRecognitionResult(
-          foodName: allItemsTitle.isNotEmpty ? allItemsTitle : (firstItem['name'] ?? 'Identified Meal'),
-          confidence: (firstItem['confidence'] ?? 0.94).toDouble(),
-          estimatedCalories: (data['total_calories'] ?? firstItem['calories'] ?? 420).toInt(),
-          proteinG: (data['total_protein_g'] ?? firstItem['protein_g'] ?? 24).toInt(),
-          carbsG: (data['total_carbs_g'] ?? firstItem['carbs_g'] ?? 45).toInt(),
-          fatG: (data['total_fat_g'] ?? firstItem['fat_g'] ?? 18).toInt(),
-          portionEstimate: '${(firstItem['portion_g'] ?? 250).toInt()}g serving',
+      if (response.statusCode == null ||
+          response.statusCode! < 200 ||
+          response.statusCode! >= 300) {
+        throw FoodRecognitionException(
+          'Server returned status ${response.statusCode}',
+          statusCode: response.statusCode,
         );
       }
 
-      return FoodRecognitionResult.fromJson(response.data);
-    } catch (_) {
-      return FoodRecognitionResult(
-        foodName: 'Restaurant Butter Chicken with Garlic Naan',
-        confidence: 0.95,
-        estimatedCalories: 690,
-        proteinG: 38,
-        carbsG: 54,
-        fatG: 36,
-        portionEstimate: '1 order (approx. 340g)',
+      final data = response.data;
+      if (data is! Map<String, dynamic>) {
+        throw const FoodRecognitionException('Unexpected response format from Vision Engine');
+      }
+
+      final result = FoodRecognitionResult.fromJson(data);
+      if (result.items.isEmpty) {
+        throw const FoodRecognitionException(
+          'No food items were detected in the image. Please try a clearer photo.',
+        );
+      }
+
+      return result;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 415) {
+        throw const FoodRecognitionException(
+          'Unsupported image format. Please use JPEG or PNG.',
+          statusCode: 415,
+        );
+      }
+      if (code == 413) {
+        throw const FoodRecognitionException(
+          'Image is too large (max 10MB). Please choose a smaller photo.',
+          statusCode: 413,
+        );
+      }
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        throw const FoodRecognitionException(
+          'Vision Engine timed out. The AI model may be loading — please try again in a moment.',
+        );
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        throw const FoodRecognitionException(
+          'Cannot reach the Vision Engine. Please check your network connection.',
+        );
+      }
+      throw FoodRecognitionException(
+        e.message ?? 'Network error while contacting Vision Engine',
       );
     }
   }

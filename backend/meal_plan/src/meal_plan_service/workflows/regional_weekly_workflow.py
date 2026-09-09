@@ -17,6 +17,30 @@ import httpx
 from temporalio import workflow, activity
 from temporalio.common import RetryPolicy
 
+try:
+    from nutriplan_shared.service_registry import (
+        PROFILE_URL,
+        MEAL_PLAN_URL,
+        GROCERY_URL,
+        WEARABLE_URL,
+        NOTIFICATION_URL,
+        DIARY_URL,
+    )
+except ImportError:
+    # Fallback for standalone local dev (ports from .env)
+    import os
+    def _svc(port: str, default: str) -> str:
+        p = os.getenv(port, default)
+        scheme = os.getenv("APP_SCHEME", "http")
+        domain = os.getenv("APP_DOMAIN", "localhost")
+        return f"{scheme}://{domain}:{p}"
+    PROFILE_URL      = _svc("APP_PORT_PROFILE",      "8003")
+    MEAL_PLAN_URL    = _svc("APP_PORT_MEAL_PLAN",    "8009")
+    GROCERY_URL      = _svc("APP_PORT_GROCERY",      "8006")
+    WEARABLE_URL     = _svc("APP_PORT_WEARABLE",     "8018")
+    NOTIFICATION_URL = _svc("APP_PORT_NOTIFICATION", "8010")
+    DIARY_URL        = _svc("APP_PORT_DIARY",        "8005")
+
 RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(seconds=5))
 
 
@@ -27,7 +51,7 @@ async def fetch_user_profile(user_id: str) -> dict:
     """Fetches user profile including regional_preference and caloric_target."""
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            res = await client.get(f"http://localhost:8003/api/v1/profile/{user_id}")
+            res = await client.get(f"{PROFILE_URL}/api/v1/profile/{user_id}")
             if res.status_code == 200:
                 return res.json()
     except Exception:
@@ -41,7 +65,7 @@ async def generate_weekly_regional_plan(user_id: str, caloric_target: int, regio
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                "http://localhost:8009/api/v1/plan/generate/regional",
+                f"{MEAL_PLAN_URL}/api/v1/plan/generate/regional",
                 json={
                     "user_id": user_id,
                     "caloric_target": caloric_target,
@@ -64,7 +88,7 @@ async def populate_grocery_list_from_plan(user_id: str, regional_preference: str
         # The grocery endpoint is auth-protected; call the internal aggregator path
         async with httpx.AsyncClient(timeout=12.0) as client:
             resp = await client.post(
-                "http://localhost:8006/api/v1/grocery/generate-from-plan",
+                f"{GROCERY_URL}/api/v1/grocery/generate-from-plan",
                 json={
                     "regional_preference": regional_preference,
                     "caloric_target": caloric_target,
@@ -85,7 +109,7 @@ async def fetch_wearable_steps(user_id: str) -> int:
     """Fetches today's step count from the Wearable service."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(f"http://localhost:8018/api/v1/wearable/summary/{user_id}")
+            res = await client.get(f"{WEARABLE_URL}/api/v1/wearable/summary/{user_id}")
             if res.status_code == 200:
                 return res.json().get("steps_today", 0)
     except Exception:
@@ -111,7 +135,7 @@ async def send_meal_reminder_notification(user_id: str, meal_name: str, meal_typ
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             res = await client.post(
-                "http://localhost:8010/api/v1/notifications/push",
+                f"{NOTIFICATION_URL}/api/v1/notifications/push",
                 json={
                     "user_id": user_id,
                     "title": f"⏰ Time for {meal_type.capitalize()}!",
@@ -129,7 +153,7 @@ async def fetch_diary_compliance(user_id: str) -> dict:
     """Fetch 7-day diary log compliance from diary service."""
     try:
         async with httpx.AsyncClient(timeout=6.0) as client:
-            res = await client.get(f"http://localhost:8005/api/v1/diary/compliance/{user_id}")
+            res = await client.get(f"{DIARY_URL}/api/v1/diary/compliance/{user_id}")
             if res.status_code == 200:
                 return res.json()
     except Exception:
@@ -143,7 +167,7 @@ async def notify_new_weekly_plan_ready(user_id: str, week_number: int, complianc
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             res = await client.post(
-                "http://localhost:8010/api/v1/notifications/push",
+                f"{NOTIFICATION_URL}/api/v1/notifications/push",
                 json={
                     "user_id": user_id,
                     "title": f"🥗 Your Week {week_number} Meal Plan is Ready!",

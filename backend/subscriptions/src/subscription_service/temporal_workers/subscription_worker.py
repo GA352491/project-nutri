@@ -17,9 +17,17 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio.common import RetryPolicy
 
-PAYMENT_SERVICE_URL = os.getenv("PAYMENT_SERVICE_URL", "http://localhost:8016")
-NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8010")
-TEMPORAL_HOST = os.getenv("TEMPORAL_HOST_PORT", "localhost:7233")
+try:
+    from nutriplan_shared.service_registry import PAYMENT_URL as _PAY_DEFAULT, NOTIFICATION_URL as _NOTIF_DEFAULT
+except ImportError:
+    _scheme = os.getenv("APP_SCHEME", "http")
+    _domain = os.getenv("APP_DOMAIN", "localhost")
+    _PAY_DEFAULT   = f"{_scheme}://{_domain}:{os.getenv('APP_PORT_PAYMENT', '8016')}"
+    _NOTIF_DEFAULT = f"{_scheme}://{_domain}:{os.getenv('APP_PORT_NOTIFICATION', '8010')}"
+
+PAYMENT_SERVICE_URL: str      = os.getenv("PAYMENT_SERVICE_URL",      _PAY_DEFAULT)
+NOTIFICATION_SERVICE_URL: str = os.getenv("NOTIFICATION_SERVICE_URL", _NOTIF_DEFAULT)
+TEMPORAL_HOST: str            = os.getenv("TEMPORAL_HOST_PORT",       "localhost:7233")
 
 
 # ── Activities ──────────────────────────────────────────────────────────────

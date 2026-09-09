@@ -26,6 +26,7 @@ interface ClinicalMessage {
   text: string
   time: string
   timestamp: string
+  status?: 'sending' | 'sent' | 'delivered' | 'failed'
   attachment?: Attachment
 }
 
@@ -111,6 +112,10 @@ const { status: wsStatus, send: wsSend, connect: wsConnect } = useResilientWebSo
   onError: () => {}
 })
 
+let clinicalReconnectAttempts = 0
+const maxClinicalReconnectAttempts = 10
+const clinicalOfflineQueue: string[] = []
+
 // ── Clinical WebSocket ────────────────────────────────────────────────────────
 function connectClinicalWs() {
   const wsUrl = `${WS_PROTOCOL}//localhost:8012/api/v1/chat/ws/clinical/${CLINICAL_ROOM_ID}/${PATIENT_EMAIL}`
@@ -124,7 +129,15 @@ function connectClinicalWs() {
 
   clinicalWs.onopen = () => {
     console.log('[Clinical WS] Connected')
+    clinicalReconnectAttempts = 0
     if (clinicalWsReconnectTimer) clearTimeout(clinicalWsReconnectTimer)
+    // Flush any pending offline messages
+    while (clinicalOfflineQueue.length > 0) {
+      const qMsg = clinicalOfflineQueue.shift()
+      if (qMsg && clinicalWs && clinicalWs.readyState === WebSocket.OPEN) {
+        clinicalWs.send(qMsg)
+      }
+    }
   }
 
   clinicalWs.onmessage = async (event) => {
@@ -137,8 +150,14 @@ function connectClinicalWs() {
   }
 
   clinicalWs.onclose = () => {
-    console.log('[Clinical WS] Disconnected — reconnecting in 3s')
-    clinicalWsReconnectTimer = setTimeout(connectClinicalWs, 3000)
+    if (clinicalReconnectAttempts < maxClinicalReconnectAttempts) {
+      clinicalReconnectAttempts++
+      const delay = Math.min(1000 * Math.pow(1.8, clinicalReconnectAttempts - 1), 15000) + Math.random() * 500
+      console.log(`[Clinical WS] Disconnected — reconnecting attempt ${clinicalReconnectAttempts} in ${Math.round(delay)}ms`)
+      clinicalWsReconnectTimer = setTimeout(connectClinicalWs, delay)
+    } else {
+      console.warn('[Clinical WS] Maximum reconnection attempts reached.')
+    }
   }
 
   clinicalWs.onerror = (e) => {
@@ -160,9 +179,12 @@ async function handleClinicalWsMessage(data: any) {
     case 'clinical_message':
       {
         const msg: ClinicalMessage = data.payload
-        // Avoid duplicating already-added messages
-        const exists = clinicalMessages.value.some(m => m.id === msg.id)
-        if (!exists) {
+        // If this message was sent optimistically by patient, update status to delivered
+        const existingIdx = clinicalMessages.value.findIndex(m => m.id === msg.id)
+        if (existingIdx !== -1) {
+          clinicalMessages.value[existingIdx].status = 'delivered'
+        } else {
+          msg.status = 'delivered'
           clinicalMessages.value.push(msg)
           await scrollClinical()
         }
@@ -209,18 +231,42 @@ async function sendClinicalMessage() {
   isSendingClinical.value = true
   clinicalInput.value = ''
 
+  const tempId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+  const now = new Date()
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+  // Optimistic UI update with 'sending' status
+  const optimisticMsg: ClinicalMessage = {
+    id: tempId,
+    room_id: CLINICAL_ROOM_ID,
+    sender: 'patient',
+    sender_email: PATIENT_EMAIL,
+    recipient_email: EXPERT_EMAIL,
+    text,
+    time: timeStr,
+    timestamp: now.toISOString(),
+    status: 'sending'
+  }
+  clinicalMessages.value.push(optimisticMsg)
+  await scrollClinical()
+
   const payload = {
     type: 'message',
+    id: tempId,
     sender: 'patient',
     sender_email: PATIENT_EMAIL,
     recipient_email: EXPERT_EMAIL,
     text,
   }
 
+  const payloadStr = JSON.stringify(payload)
+
   if (clinicalWs && clinicalWs.readyState === WebSocket.OPEN) {
-    clinicalWs.send(JSON.stringify(payload))
+    clinicalWs.send(payloadStr)
+    optimisticMsg.status = 'sent'
   } else {
-    // REST fallback
+    // Queue offline and attempt REST fallback
+    clinicalOfflineQueue.push(payloadStr)
     try {
       await fetch(`${CHAT_API}/clinical/send`, {
         method: 'POST',
@@ -232,8 +278,10 @@ async function sendClinicalMessage() {
           text,
         })
       })
+      optimisticMsg.status = 'sent'
     } catch (e) {
       console.error('[Clinical REST] Send failed', e)
+      // Keep optimistic message with status 'sending' so user knows it will sync when online
     }
   }
 
@@ -494,7 +542,14 @@ onUnmounted(() => {
                   <div class="text-[0.72rem] opacity-80 truncate">{{ msg.attachment.meta }}</div>
                 </div>
               </div>
-              <div class="text-[0.68rem] mt-1.5 opacity-70 text-right">{{ msg.time }}</div>
+              <div class="text-[0.68rem] mt-1.5 opacity-70 flex items-center justify-end gap-1">
+                <span>{{ msg.time }}</span>
+                <span v-if="msg.sender === 'patient'" class="inline-flex items-center ml-0.5 font-mono text-[0.65rem]">
+                  <span v-if="msg.status === 'sending'" title="Sending...">⏳</span>
+                  <span v-else-if="msg.status === 'sent'" title="Sent to server">✓</span>
+                  <span v-else title="Delivered">✓✓</span>
+                </span>
+              </div>
             </div>
           </div>
 

@@ -1,9 +1,12 @@
 import json
+import os
 import httpx
 from typing import Dict, Any, List
 
+_OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
+
 class LLMEngine:
-    def __init__(self, ollama_host: str = "http://localhost:11434"):
+    def __init__(self, ollama_host: str = _OLLAMA_URL):
         self.ollama_host = ollama_host
         self.model = "llama3"
 

@@ -9,7 +9,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const email = ref('admin@nutriplan.local')
-const password = ref('Admin@12345')
+const password = ref('Admin@123')
 const isLoading = ref(false)
 const error = ref('')
 
@@ -85,21 +85,21 @@ function setCredentials(e: string, p: string) {
  <div class="flex flex-wrap gap-2">
  <button
  type="button"
- @click="setCredentials('admin@nutriplan.local', 'Admin@12345')"
+ @click="setCredentials('admin@nutriplan.local', 'Admin@123')"
  class="px-2.5 py-1 text-xs rounded-lg border border-primary/40 bg-primary/10 text-primary font-medium hover:bg-primary/20 transition"
  >
  Admin
  </button>
  <button
  type="button"
- @click="setCredentials('expert@nutriplan.local', 'Expert@12345')"
+ @click="setCredentials('expert@nutriplan.local', 'Expert@123')"
  class="px-2.5 py-1 text-xs rounded-lg border border-warning/40 bg-warning/10 text-warning font-medium hover:bg-warning/20 transition"
  >
  ‍️ Expert / Nutritionist
  </button>
  <button
  type="button"
- @click="setCredentials('patient@nutriplan.local', 'Patient@12345')"
+ @click="setCredentials('patient@nutriplan.local', 'Patient@123')"
  class="px-2.5 py-1 text-xs rounded-lg border border-border bg-canvas-raised text-ink-muted font-medium hover:border-primary/50 transition"
  >
  Patient

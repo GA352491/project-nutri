@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/typography.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
+import '../../auth/providers/auth_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -13,22 +16,134 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ApiClient _apiClient = ApiClient();
+  bool _isLoading = false;
 
   // Form states
-  final _nameController = TextEditingController(text: 'Ananya Sharma');
-  final _emailController = TextEditingController(text: 'ananya@example.com');
-  final _phoneController = TextEditingController(text: '+91 98765 43210');
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   
-  double _weightKg = 62.5;
-  double _heightCm = 168.0;
-  int _targetCalories = 1850;
+  double _weightKg = 65.0;
+  double _heightCm = 170.0;
+  int _targetCalories = 2000;
   String _dietaryPreference = 'Vegetarian';
-  List<String> _allergens = ['Peanuts', 'Lactose'];
+  List<String> _allergens = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    // Prepopulate name and email immediately from active auth state
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authUser = ref.read(authProvider).user;
+      if (authUser != null) {
+        if (authUser.name != null && authUser.name!.isNotEmpty) {
+          _nameController.text = authUser.name!;
+        }
+        if (authUser.email.isNotEmpty) {
+          _emailController.text = authUser.email;
+        }
+      }
+      _loadProfile();
+    });
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _isLoading = true);
+    try {
+      // 1. Fetch user auth details from auth service to guarantee email/name are populated
+      try {
+        final authResp = await _apiClient.dio.get('${ApiEndpoints.authBaseUrl}/me');
+        if (authResp.data != null) {
+          final authData = authResp.data;
+          if ((authData['full_name'] ?? authData['name']) != null) {
+            _nameController.text = (authData['full_name'] ?? authData['name']).toString();
+          }
+          if (authData['email'] != null) {
+            _emailController.text = authData['email'].toString();
+          }
+        }
+      } catch (_) {}
+
+      // 2. Fetch clinical profile biometrics and dietary preferences
+      final response = await _apiClient.dio.get('${ApiEndpoints.userBaseUrl}/me');
+      final data = response.data;
+      if (mounted) {
+        setState(() {
+          if (data['full_name'] != null && (data['full_name'] as String).isNotEmpty) {
+            _nameController.text = data['full_name'];
+          }
+          if (data['email'] != null && (data['email'] as String).isNotEmpty) {
+            _emailController.text = data['email'];
+          }
+          if (data['phone'] != null && (data['phone'] as String).isNotEmpty) {
+            _phoneController.text = data['phone'];
+          } else if (_phoneController.text.isEmpty) {
+            _phoneController.text = '+91 98765 43210';
+          }
+          _weightKg = (data['weight_kg'] as num?)?.toDouble() ?? 65.0;
+          _heightCm = (data['height_cm'] as num?)?.toDouble() ?? 170.0;
+          _dietaryPreference = (data['dietary_preference'] ?? 'Vegetarian').toString();
+          if (data['allergies'] is List) {
+            _allergens = (data['allergies'] as List).map((e) => e.toString()).toList();
+          }
+        });
+      }
+    } catch (_) {
+      // Fallback to auth provider data if offline
+      final authUser = ref.read(authProvider).user;
+      if (authUser != null && mounted) {
+        setState(() {
+          if (authUser.name != null && authUser.name!.isNotEmpty) {
+            _nameController.text = authUser.name!;
+          }
+          if (authUser.email.isNotEmpty) {
+            _emailController.text = authUser.email;
+          }
+          if (_phoneController.text.isEmpty) {
+            _phoneController.text = '+91 98765 43210';
+          }
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() => _isLoading = true);
+    try {
+      await _apiClient.dio.put(
+        '${ApiEndpoints.userBaseUrl}/me',
+        data: {
+          'full_name': _nameController.text.trim(),
+          'weight_kg': _weightKg,
+          'height_cm': _heightCm,
+          'dietary_preference': _dietaryPreference.toLowerCase(),
+          'allergies': _allergens,
+        },
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile updated successfully!'),
+            backgroundColor: NutriColors.primary,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save profile: $e'),
+            backgroundColor: NutriColors.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -56,11 +171,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with SingleTicker
           IconButton(
             icon: const Icon(Icons.logout, color: NutriColors.danger),
             tooltip: 'Logout',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Logged out successfully')),
-              );
-              context.go('/login');
+            onPressed: () async {
+              await ref.read(authProvider.notifier).logout();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Logged out successfully')),
+                );
+                context.go('/login');
+              }
             },
           ),
         ],
@@ -168,12 +286,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with SingleTicker
                 backgroundColor: NutriColors.primary,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Profile details updated successfully!')),
-                );
-              },
-              child: const Text('Save Profile Changes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              onPressed: _isLoading ? null : _saveProfile,
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Save Profile Changes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
             ),
           ),
         ],
@@ -388,6 +508,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with SingleTicker
               title: const Text('Delete Account', style: TextStyle(color: NutriColors.danger)),
               trailing: const Icon(Icons.chevron_right, color: NutriColors.danger),
               onTap: () {},
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _buildCard(
+          title: 'Provider Portal & Session',
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.medical_services_outlined, color: NutriColors.primary),
+              title: const Text('Switch to Provider Portal', style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('Access clinical dashboard, patient caseload & sign-offs', style: TextStyle(fontSize: 11)),
+              trailing: const Icon(Icons.chevron_right, color: NutriColors.primary),
+              onTap: () => context.go('/expert/dashboard'),
+            ),
+            const Divider(),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.logout_rounded, color: NutriColors.danger),
+              title: const Text('Sign Out', style: TextStyle(color: NutriColors.danger, fontWeight: FontWeight.bold)),
+              onTap: () async {
+                await ref.read(authProvider.notifier).logout();
+                if (mounted) context.go('/login');
+              },
             ),
           ],
         ),

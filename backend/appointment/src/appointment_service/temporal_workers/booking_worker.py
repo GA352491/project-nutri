@@ -24,12 +24,20 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio.common import RetryPolicy
 
-# ── Service base URLs (read from env, default to local dev ports) ─────────────
-PAYMENT_URL   = os.getenv("PAYMENT_SERVICE_URL",       "http://localhost:8016")
-VIDEO_URL     = os.getenv("VIDEO_SERVICE_URL",         "http://localhost:8014")
-NOTIFICATION_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8010")
-APPOINTMENT_URL  = os.getenv("APPOINTMENT_SERVICE_URL",  "http://localhost:8013")
-TEMPORAL_HOST = os.getenv("TEMPORAL_HOST_PORT",        "localhost:7233")
+# ── Service base URLs (from centralized service registry) ─────────────────────
+from nutriplan_shared.service_registry import (
+    PAYMENT_URL as _REG_PAYMENT_URL,
+    VIDEO_URL as _REG_VIDEO_URL,
+    NOTIFICATION_URL as _REG_NOTIFICATION_URL,
+    APPOINTMENT_URL as _REG_APPOINTMENT_URL,
+    TEMPORAL_UI_URL,
+)
+
+PAYMENT_URL   = os.getenv("PAYMENT_SERVICE_URL",       _REG_PAYMENT_URL)
+VIDEO_URL     = os.getenv("VIDEO_SERVICE_URL",         _REG_VIDEO_URL)
+NOTIFICATION_URL = os.getenv("NOTIFICATION_SERVICE_URL", _REG_NOTIFICATION_URL)
+APPOINTMENT_URL  = os.getenv("APPOINTMENT_SERVICE_URL",  _REG_APPOINTMENT_URL)
+TEMPORAL_HOST = os.getenv("TEMPORAL_HOST_PORT",        f"{os.getenv('APP_DOMAIN', 'localhost')}:7233")
 
 
 # ── Activities (individual steps of the booking saga) ─────────────────────────
@@ -172,7 +180,7 @@ class BookingWorkflow:
     A Temporal Saga that orchestrates the entire booking process.
     Each activity is automatically retried on transient failures.
     If any step fails permanently, the workflow fails gracefully
-    and can be inspected in the Temporal Web UI at http://localhost:8233.
+    and can be inspected in the Temporal Web UI.
     """
 
     @workflow.run
@@ -244,7 +252,7 @@ async def run_worker():
         ],
     )
     print("[Temporal Worker] ✅ Booking worker started on task queue: booking-task-queue")
-    print(f"[Temporal Worker]    View workflows at: http://localhost:{os.getenv('TEMPORAL_UI_PORT', '8233')}")
+    print(f"[Temporal Worker]    View workflows at: {TEMPORAL_UI_URL}")
     await worker.run()
 
 
@@ -260,7 +268,7 @@ async def trigger_test_workflow(
     """
     Trigger the BookingWorkflow once for manual testing.
     Run with: python -m appointment_service.temporal_workers.booking_worker --trigger
-    Then check http://localhost:8233 to see it in the Temporal UI.
+    Then check Temporal UI to see it.
     """
     print(f"[Trigger] Connecting to Temporal at {TEMPORAL_HOST}...")
     client = await Client.connect(TEMPORAL_HOST)
@@ -271,7 +279,7 @@ async def trigger_test_workflow(
         task_queue="booking-task-queue",
     )
     print(f"[Trigger] ✅ Workflow started: ID={handle.id}")
-    print(f"[Trigger]    View at: http://localhost:{os.getenv('TEMPORAL_UI_PORT', '8233')}/workflows")
+    print(f"[Trigger]    View at: {TEMPORAL_UI_URL}/workflows")
     result = await handle.result()
     print(f"[Trigger] ✅ Workflow completed: {result}")
     return result

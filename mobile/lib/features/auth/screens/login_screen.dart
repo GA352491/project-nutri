@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../shared/widgets/button.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/typography.dart';
@@ -14,8 +16,9 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _emailController = TextEditingController(text: 'patient@nutriplan.local');
-  final _passwordController = TextEditingController(text: 'password123');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
 
   void _login() async {
     final email = _emailController.text.trim();
@@ -30,7 +33,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     final success = await ref.read(authProvider.notifier).login(email, password);
     if (success && mounted) {
-      context.go('/today');
+      final user = ref.read(authProvider).user;
+      final role = user?.role.toLowerCase() ?? '';
+      if (role == 'nutritionist' || role == 'expert') {
+        context.go('/expert/dashboard');
+      } else {
+        context.go('/today');
+      }
     }
   }
 
@@ -112,18 +121,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               
               TextFormField(
                 controller: _passwordController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Password',
                   hintText: '••••••••',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                      color: NutriColors.inkMuted,
+                    ),
+                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  ),
                 ),
-                obscureText: true,
+                obscureText: _obscurePassword,
               ),
               const SizedBox(height: 12),
               
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () {},
+                  onPressed: () => _showForgotPasswordDialog(context),
                   child: Text(
                     'Forgot Password?',
                     style: NutriTypography.dataMd.copyWith(color: NutriColors.primary),
@@ -156,9 +172,136 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ],
               ),
+
+              const SizedBox(height: 32),
+              const Divider(color: NutriColors.border),
+              const SizedBox(height: 16),
+              Text(
+                'QUICK ROLE SWITCHER (LOCAL TESTING)',
+                style: NutriTypography.dataSm.copyWith(
+                  color: NutriColors.inkMuted,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 10,
+                  letterSpacing: 1.0,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _emailController.text = 'patient@nutriplan.local';
+                          _passwordController.text = 'Patient@123';
+                        });
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        side: const BorderSide(color: NutriColors.border),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('Patient', style: TextStyle(fontSize: 11)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _emailController.text = 'expert@nutriplan.local';
+                          _passwordController.text = 'Expert@123';
+                        });
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        side: const BorderSide(color: Color(0xFFF59E0B)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('Expert', style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _emailController.text = 'admin@nutriplan.local';
+                          _passwordController.text = 'Admin@123';
+                        });
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        side: const BorderSide(color: NutriColors.primary),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('Admin', style: TextStyle(fontSize: 11, color: NutriColors.primary)),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showForgotPasswordDialog(BuildContext context) {
+    final resetEmailController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter your email address and we will send you a password reset link.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: resetEmailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email Address',
+                hintText: 'you@example.com',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: NutriColors.primary),
+            onPressed: () async {
+              final email = resetEmailController.text.trim();
+              if (email.isEmpty) return;
+              Navigator.pop(ctx);
+              try {
+                await ApiClient().dio.post(
+                  '${ApiEndpoints.authBaseUrl}/forgot-password',
+                  data: {'email': email},
+                );
+              } catch (_) {}
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: NutriColors.primary,
+                    content: Text('If an account exists for $email, a reset link has been sent.'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Send Link', style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
     );
   }

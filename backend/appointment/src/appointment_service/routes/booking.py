@@ -12,6 +12,14 @@ router = APIRouter()
 TEMPORAL_HOST = os.getenv("TEMPORAL_HOST_PORT", "localhost:7233")
 TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "booking-task-queue")
 
+try:
+    from nutriplan_shared.service_registry import TEMPORAL_UI_URL as _TEMPORAL_UI_URL
+except ImportError:
+    _scheme = os.getenv("APP_SCHEME", "http")
+    _domain = os.getenv("APP_DOMAIN", "localhost")
+    _port   = os.getenv("APP_PORT_TEMPORAL_UI", "8233")
+    _TEMPORAL_UI_URL = f"{_scheme}://{_domain}:{_port}"
+
 
 class TimeSlot(BaseModel):
     time: str
@@ -147,7 +155,7 @@ async def book_appointment(
         "time": row.time,
         "message": "Booking initiated. You will receive a confirmation email with your video link shortly.",
         "temporal_workflow": f"booking-{appointment_id}",
-        "temporal_ui": "http://localhost:8233/workflows",
+        "temporal_ui": f"{_TEMPORAL_UI_URL}/workflows",
     }
 
 

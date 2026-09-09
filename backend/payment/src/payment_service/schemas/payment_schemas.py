@@ -23,6 +23,14 @@ class SetupIntentRequest(BaseModel):
     user_id: Optional[str] = "usr_patient_01"
 
 
+class HostedCheckoutRequest(BaseModel):
+    tier: str
+    user_id: Optional[str] = None
+    success_url: Optional[str] = None
+    cancel_url: Optional[str] = None
+    metadata: Optional[dict] = None
+
+
 class PayoutTransferRequest(BaseModel):
     destination_account_id: str
     gross_amount_usd: float

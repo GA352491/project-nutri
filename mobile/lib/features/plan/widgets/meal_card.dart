@@ -15,6 +15,7 @@ class NutriMealCard extends StatelessWidget {
   final bool isLogged;
   final String statusLabel; // e.g., 'Breakfast', 'Lunch'
   final VoidCallback onLog;
+  final VoidCallback? onUnlog;
   final VoidCallback onSwap;
   final VoidCallback onTap;
   final bool highGlycemic; // CGM Spike Radar flag
@@ -31,6 +32,7 @@ class NutriMealCard extends StatelessWidget {
     required this.isLogged,
     required this.statusLabel,
     required this.onLog,
+    this.onUnlog,
     required this.onSwap,
     required this.onTap,
     this.highGlycemic = false,
@@ -163,13 +165,27 @@ class NutriMealCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: ElevatedButton(
-                          onPressed: isLogged ? null : onLog,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isLogged ? NutriColors.success : NutriColors.primary,
-                          ),
-                          child: Text(isLogged ? 'Logged' : 'Log Meal'),
-                        ),
+                        child: isLogged
+                            ? OutlinedButton.icon(
+                                onPressed: onUnlog,
+                                icon: const Icon(Icons.check_circle_rounded,
+                                    color: NutriColors.success, size: 16),
+                                label: const Text('Logged',
+                                    style: TextStyle(
+                                        color: NutriColors.success,
+                                        fontWeight: FontWeight.bold)),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(
+                                      color: NutriColors.success),
+                                ),
+                              )
+                            : ElevatedButton(
+                                onPressed: onLog,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: NutriColors.primary,
+                                ),
+                                child: const Text('Log Meal'),
+                              ),
                       ),
                     ],
                   ),

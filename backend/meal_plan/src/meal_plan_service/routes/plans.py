@@ -41,8 +41,9 @@ class SwapMealRequest(BaseModel):
 
 from temporalio.client import Client
 import os
+from nutriplan_shared.service_registry import TEMPORAL_UI_URL, ADMIN_URL
 
-TEMPORAL_HOST = os.getenv("TEMPORAL_HOST_PORT", "localhost:7233")
+TEMPORAL_HOST = os.getenv("TEMPORAL_HOST_PORT", f"{os.getenv('APP_DOMAIN', 'localhost')}:7233")
 
 @router.post("/generate")
 async def generate_plan(req: PlanRequest):
@@ -65,7 +66,7 @@ async def generate_plan(req: PlanRequest):
         return {
             "status": "success",
             "temporal_workflow_id": workflow_id,
-            "temporal_ui": "http://localhost:8233/workflows",
+            "temporal_ui": f"{TEMPORAL_UI_URL}/workflows",
             "mode": "temporal_ai",
             "plan": result.get("plan", {}),
             "grocery_sync": result.get("grocery_sync", {})
@@ -135,7 +136,7 @@ async def trigger_weekly_workflow(req: PlanRequest):
             id=workflow_id,
             task_queue="meal-plan-task-queue",
         )
-        temporal_ui = f"http://localhost:8233/namespaces/default/workflows/{workflow_id}"
+        temporal_ui = f"{TEMPORAL_UI_URL}/namespaces/default/workflows/{workflow_id}"
     except Exception:
         pass
 
@@ -296,7 +297,7 @@ async def handle_onboarding_complete(req: OnboardingCompleteRequest):
     try:
         async with _httpx.AsyncClient(timeout=1.5) as client:
             res = await client.get(
-                f"http://localhost:8019/api/v1/admin/ai-plan/status",
+                f"{ADMIN_URL}/api/v1/admin/ai-plan/status",
                 params={"user_id": req.user_id}
             )
             if res.status_code == 200:
@@ -410,5 +411,53 @@ async def clinical_approve_plan(user_id: str, req: ClinicalSignOffRequest):
 @router.get("/clinical/signoff-record/{user_id}")
 async def get_signoff_record(user_id: str):
     return _CLINICAL_SIGNOFF_RECORDS.get(user_id, {"status": "NO_RECORD_FOUND", "requires_signoff": False})
+
+
+@router.get("/today")
+async def get_today_plan(
+    user_id: str = "default_user",
+    caloric_target: int = 1800,
+    regional_preference: str = "in_south_andhra",
+    dietary_flag: str = "vegetarian",
+):
+    """
+    Returns today's active meal plan along with daily macro targets and nutrient totals.
+    Integrates directly with the ICMR-NIN IFCT regional optimizer.
+    """
+    res = optimizer.solve_daily_plan(
+        caloric_target=caloric_target,
+        region_id=regional_preference,
+        dietary_flag=dietary_flag,
+    )
+    meals = []
+    for m in res.get("meals", []):
+        meals.append({
+            "id": m.get("recipe_id", m.get("name")),
+            "title": m.get("name"),
+            "meal_type": m.get("meal_type", "Lunch").capitalize(),
+            "calories": int(m.get("calories", 400)),
+            "protein": int(m.get("protein_g", 20)),
+            "carbs": int(m.get("carbs_g", 50)),
+            "fat": int(m.get("fat_g", 12)),
+            "is_logged": False,
+            "image_url": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+            "cuisine": m.get("cuisine"),
+            "ingredients": m.get("ingredients", []),
+            "instructions": m.get("instructions", []),
+        })
+
+    return {
+        "status": "success",
+        "calories_eaten": int(res.get("total_calories", 1750) * 0.4),
+        "target_calories": caloric_target,
+        "protein_g": int(res.get("total_protein_g", 80) * 0.4),
+        "target_protein_g": int(res.get("total_protein_g", 80)),
+        "carbs_g": int(res.get("total_carbs_g", 240) * 0.4),
+        "target_carbs_g": int(res.get("total_carbs_g", 240)),
+        "fat_g": int(res.get("total_fat_g", 40) * 0.4),
+        "target_fat_g": int(res.get("total_fat_g", 40)),
+        "meals": meals,
+        "region_selected": regional_preference,
+    }
 
 

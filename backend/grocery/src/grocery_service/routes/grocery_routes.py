@@ -52,11 +52,13 @@ async def generate_grocery_from_plan(
     from ..services.grocery_service import get_or_create_list, AsyncSessionLocal
     import uuid as uuid_lib
 
+    from nutriplan_shared.service_registry import MEAL_PLAN_URL
+
     # 1. Request a regional meal plan from the Meal Plan Service
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
-                "http://localhost:8009/api/v1/plan/generate/regional",
+                f"{MEAL_PLAN_URL}/api/v1/plan/generate/regional",
                 json={
                     "user_id": str(user_uuid(user)),
                     "caloric_target": req.caloric_target,

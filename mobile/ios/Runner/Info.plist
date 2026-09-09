@@ -4,6 +4,16 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>NutriPlan needs camera access to photograph your meals for AI nutritional analysis.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>NutriPlan needs photo library access to select meal images for AI nutritional analysis.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>NutriPlan needs permission to save your meal analysis results to your photo library.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>NutriPlan reads your steps, active calories, heart rate, and sleep from Apple Health to dynamically calibrate your daily metabolic caloric targets.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>NutriPlan writes logged dietary nutrition and water intake to Apple Health.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

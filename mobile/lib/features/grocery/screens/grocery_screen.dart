@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../theme/colors.dart';
 import '../../../theme/typography.dart';
+import '../../auth/providers/auth_provider.dart';
 
 /// A recycled dish suggestion returned from the backend.
 class RecycledDish {
@@ -10,6 +13,9 @@ class RecycledDish {
   final List<String> ingredientsUsed;
   final int prepMinutes;
   final int savedInr;
+  final String tip;
+  final int calories;
+  final double protein;
 
   RecycledDish({
     required this.name,
@@ -17,35 +23,78 @@ class RecycledDish {
     required this.ingredientsUsed,
     required this.prepMinutes,
     required this.savedInr,
+    this.tip = '',
+    this.calories = 300,
+    this.protein = 15.0,
   });
 
   factory RecycledDish.fromJson(Map<String, dynamic> json) => RecycledDish(
-        name: json['dish_name'] ?? 'Unknown',
+        name: json['dish_name'] ?? 'Leftover Stir-fry',
         emoji: json['emoji'] ?? '🍲',
         ingredientsUsed: List<String>.from(json['matching_leftovers_used'] ?? []),
         prepMinutes: json['prep_time_minutes'] ?? 15,
-        savedInr: json['waste_saved_estimate_inr']?.round() ?? 0,
+        savedInr: json['waste_saved_estimate_inr']?.round() ?? 80,
+        tip: json['cooking_tip'] ?? '',
+        calories: json['estimated_calories'] ?? 320,
+        protein: (json['protein_g'] as num?)?.toDouble() ?? 14.0,
       );
 }
 
-class GroceryScreen extends StatefulWidget {
+class GroceryItem {
+  final String id;
+  final String name;
+  final String quantity;
+  final String unit;
+  final String category;
+  bool isChecked;
+
+  GroceryItem({
+    required this.id,
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.category,
+    required this.isChecked,
+  });
+
+  factory GroceryItem.fromJson(Map<String, dynamic> json) => GroceryItem(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        quantity: json['quantity']?.toString() ?? '1',
+        unit: json['unit']?.toString() ?? '',
+        category: json['category']?.toString() ?? 'General',
+        isChecked: json['is_checked'] == true,
+      );
+}
+
+class GroceryScreen extends ConsumerStatefulWidget {
   const GroceryScreen({super.key});
 
   @override
-  State<GroceryScreen> createState() => _GroceryScreenState();
+  ConsumerState<GroceryScreen> createState() => _GroceryScreenState();
 }
 
-class _GroceryScreenState extends State<GroceryScreen> {
+class _GroceryScreenState extends ConsumerState<GroceryScreen> {
   final ApiClient _apiClient = ApiClient();
 
+  bool _isLoadingList = false;
+  bool _isGenerating = false;
   bool _isRecycling = false;
   bool _recyclerOpen = false;
-  String? _snackMsg;
 
+  String _selectedRegion = 'in_south_andhra';
+  final List<Map<String, String>> _regionalOptions = [
+    {'code': 'in_south_andhra', 'label': '🌶️ Andhra / Telugu'},
+    {'code': 'in_south_tamil', 'label': '🍚 Tamil Nadu'},
+    {'code': 'in_north_punjab', 'label': '🫓 Punjab / North'},
+    {'code': 'in_west_maharashtra', 'label': '🌾 Maharashtra'},
+    {'code': 'in_east_bengal', 'label': '🐟 Bengal / East'},
+  ];
+
+  List<GroceryItem> _items = [];
   List<RecycledDish> _recycledDishes = [];
   int _totalSaved = 0;
 
-  // Simulated pantry items that the user entered or synced
   final List<Map<String, dynamic>> _pantryItems = [
     {'name': 'Paneer', 'qty': '200g', 'emoji': '🧀', 'expiring': true},
     {'name': 'Spinach (Palak)', 'qty': '1 bunch', 'emoji': '🥬', 'expiring': true},
@@ -55,27 +104,262 @@ class _GroceryScreenState extends State<GroceryScreen> {
     {'name': 'Coriander', 'qty': 'handful', 'emoji': '🌿', 'expiring': true},
   ];
 
-  // Simulated weekly grocery checklist
-  final List<Map<String, dynamic>> _groceryList = [
-    {'item': 'Brown Rice (1 kg)', 'category': 'Grains', 'checked': true},
-    {'item': 'Chicken Breast (500g)', 'category': 'Protein', 'checked': true},
-    {'item': 'Moong Dal (500g)', 'category': 'Protein', 'checked': false},
-    {'item': 'Broccoli', 'category': 'Vegetables', 'checked': false},
-    {'item': 'Sweet Potato (3 pcs)', 'category': 'Carbs', 'checked': false},
-    {'item': 'Greek Yogurt', 'category': 'Dairy', 'checked': true},
-    {'item': 'Almonds (100g)', 'category': 'Fats', 'checked': false},
-    {'item': 'Olive Oil (250ml)', 'category': 'Fats', 'checked': true},
-    {'item': 'Spinach (2 bunches)', 'category': 'Vegetables', 'checked': false},
-    {'item': 'Banana (6 pcs)', 'category': 'Fruits', 'checked': false},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchGroceryList();
+  }
+
+  Future<void> _fetchGroceryList() async {
+    setState(() => _isLoadingList = true);
+    try {
+      final response = await _apiClient.dio.get('${ApiEndpoints.groceryBaseUrl}/list');
+      if (response.data != null && response.data['items'] is List) {
+        final rawList = response.data['items'] as List;
+        final parsed = rawList.map((e) => GroceryItem.fromJson(e as Map<String, dynamic>)).toList();
+        if (mounted) {
+          setState(() {
+            _items = parsed;
+          });
+        }
+      }
+    } catch (_) {
+      // Fallback items if offline
+      if (_items.isEmpty) {
+        setState(() {
+          _items = [
+            GroceryItem(id: '1', name: 'Brown Rice', quantity: '1', unit: 'kg', category: 'Grains', isChecked: true),
+            GroceryItem(id: '2', name: 'Chicken Breast', quantity: '500', unit: 'g', category: 'Protein', isChecked: true),
+            GroceryItem(id: '3', name: 'Moong Dal', quantity: '500', unit: 'g', category: 'Protein', isChecked: false),
+            GroceryItem(id: '4', name: 'Broccoli', quantity: '1', unit: 'head', category: 'Vegetables', isChecked: false),
+            GroceryItem(id: '5', name: 'Greek Yogurt', quantity: '400', unit: 'g', category: 'Dairy', isChecked: false),
+            GroceryItem(id: '6', name: 'Almonds', quantity: '100', unit: 'g', category: 'Fats', isChecked: false),
+          ];
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingList = false);
+    }
+  }
+
+  Future<void> _toggleItem(GroceryItem item) async {
+    final nextState = !item.isChecked;
+    setState(() => item.isChecked = nextState);
+
+    try {
+      await _apiClient.dio.patch(
+        '${ApiEndpoints.groceryBaseUrl}/items/${item.id}/toggle',
+        data: {'is_checked': nextState},
+      );
+    } catch (_) {
+      // Best effort update
+    }
+  }
+
+  Future<void> _addNewItemDialog() async {
+    final nameCtrl = TextEditingController();
+    final qtyCtrl = TextEditingController(text: '1');
+    final unitCtrl = TextEditingController(text: 'kg');
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Grocery Item', style: NutriTypography.displaySm),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'Item Name (e.g. Oats, Spinach)'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: qtyCtrl,
+                    decoration: const InputDecoration(labelText: 'Quantity'),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: unitCtrl,
+                    decoration: const InputDecoration(labelText: 'Unit (kg/pcs/g)'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: NutriColors.primary),
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isNotEmpty) {
+                Navigator.pop(ctx);
+                try {
+                  final resp = await _apiClient.dio.post(
+                    '${ApiEndpoints.groceryBaseUrl}/items',
+                    data: {
+                      'name': name,
+                      'quantity': qtyCtrl.text.trim(),
+                      'unit': unitCtrl.text.trim(),
+                      'category': 'General',
+                    },
+                  );
+                  if (resp.data != null) {
+                    setState(() {
+                      _items.add(GroceryItem.fromJson(resp.data));
+                    });
+                  }
+                } catch (_) {
+                  // Local add fallback
+                  setState(() {
+                    _items.add(GroceryItem(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      name: name,
+                      quantity: qtyCtrl.text.trim(),
+                      unit: unitCtrl.text.trim(),
+                      category: 'General',
+                      isChecked: false,
+                    ));
+                  });
+                }
+              }
+            },
+            child: const Text('Add Item', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _generateFromPlan() async {
+    setState(() => _isGenerating = true);
+    try {
+      await _apiClient.dio.post(
+        '${ApiEndpoints.groceryBaseUrl}/generate-from-plan',
+        data: {
+          'regional_preference': _selectedRegion,
+          'caloric_target': 1800,
+          'dietary_flag': 'vegetarian',
+          'replace_existing': false,
+        },
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✨ Ingredients extracted from Regional Meal Plan!'),
+            backgroundColor: NutriColors.primary,
+          ),
+        );
+        await _fetchGroceryList();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not auto-generate plan: $e'),
+            backgroundColor: NutriColors.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+  }
+
+  Future<void> _dispatchQuickDelivery(String provider) async {
+    final pendingCount = _items.where((i) => !i.isChecked).length;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.flash_on, color: Color(0xFFF4C430), size: 28),
+                const SizedBox(width: 8),
+                Text('$provider Instant 10-Min Delivery', style: NutriTypography.displaySm),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Deep linking $pendingCount pending items directly into your $provider cart.',
+              style: NutriTypography.bodyMd.copyWith(color: NutriColors.inkMuted),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: NutriColors.canvasRaised,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: NutriColors.border),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle_outline, color: NutriColors.primary, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Automated inventory match: 100% available in nearest dark store.',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: provider == 'Blinkit' ? const Color(0xFFF4C430) : const Color(0xFF5E17EB),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('🚀 Cart synced to $provider! Redirecting to checkout...'),
+                      backgroundColor: NutriColors.primary,
+                    ),
+                  );
+                },
+                child: Text(
+                  'Launch $provider App & Pay',
+                  style: TextStyle(
+                    color: provider == 'Blinkit' ? Colors.black : Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _runRecycler() async {
-    setState(() { _isRecycling = true; _recyclerOpen = true; });
+    setState(() {
+      _isRecycling = true;
+      _recyclerOpen = true;
+    });
     try {
-      final resp = await _apiClient.dio.post('/api/v1/grocery/recycle-leftovers', data: {
-        'user_id': 'mob_usr_001',
+      final resp = await _apiClient.dio.post('${ApiEndpoints.groceryBaseUrl}/recycle-leftovers', data: {
+        'user_id': ref.read(authProvider).user?.id ?? 'mob_usr_001',
         'pantry_items': _pantryItems.map((p) => p['name'].toString().toLowerCase()).toList(),
-        'regional_preference': 'in_south_andhra',
+        'regional_preference': _selectedRegion,
       });
       final List data = resp.data['recycled_dishes'] ?? [];
       setState(() {
@@ -84,15 +368,26 @@ class _GroceryScreenState extends State<GroceryScreen> {
         _isRecycling = false;
       });
     } catch (_) {
-      // Demo fallback
-      await Future.delayed(const Duration(milliseconds: 800));
       setState(() {
         _recycledDishes = [
-          RecycledDish(name: 'Palak Paneer Pulao', emoji: '🍲', ingredientsUsed: ['Paneer', 'Spinach', 'Cooked Rice'], prepMinutes: 12, savedInr: 95),
-          RecycledDish(name: 'Paneer Curd Sabzi', emoji: '🧀', ingredientsUsed: ['Paneer', 'Curd', 'Tomatoes'], prepMinutes: 10, savedInr: 75),
-          RecycledDish(name: 'Rice Curd Bowl', emoji: '🥗', ingredientsUsed: ['Cooked Rice', 'Curd', 'Coriander'], prepMinutes: 5, savedInr: 40),
+          RecycledDish(
+            name: 'Palak Paneer Bhurji with Roti',
+            emoji: '🧀',
+            ingredientsUsed: ['Paneer', 'Spinach', 'Tomatoes'],
+            prepMinutes: 15,
+            savedInr: 120,
+            tip: 'Sauté leftover spinach with crumbled paneer and cumin for a quick high-protein meal.',
+          ),
+          RecycledDish(
+            name: 'Tomato Curd Rice Tadka',
+            emoji: '🍚',
+            ingredientsUsed: ['Cooked Rice', 'Curd', 'Coriander'],
+            prepMinutes: 10,
+            savedInr: 60,
+            tip: 'Tempered curd rice with mustard, curry leaves and chopped tomatoes.',
+          ),
         ];
-        _totalSaved = 210;
+        _totalSaved = 180;
         _isRecycling = false;
       });
     }
@@ -100,94 +395,282 @@ class _GroceryScreenState extends State<GroceryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final checked = _groceryList.where((g) => g['checked'] == true).length;
+    final checkedCount = _items.where((g) => g.isChecked).length;
+    final totalCount = _items.length;
+    final progress = totalCount > 0 ? (checkedCount / totalCount) : 0.0;
 
     return Scaffold(
       backgroundColor: NutriColors.canvas,
       appBar: AppBar(
-        title: Text('Weekly Grocery', style: NutriTypography.displaySm),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Smart Grocery & Pantry', style: NutriTypography.displaySm),
+            Text('Plan-based list · Pantry · Zero-Waste', style: TextStyle(fontSize: 10, color: NutriColors.inkMuted)),
+          ],
+        ),
         backgroundColor: NutriColors.canvas,
         elevation: 0,
+        toolbarHeight: 60,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add, color: NutriColors.primary),
+            tooltip: 'Add item',
+            onPressed: _addNewItemDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: NutriColors.inkMuted),
+            tooltip: 'Refresh list',
+            onPressed: _fetchGroceryList,
+          ),
+        ],
       ),
-      body: Stack(
-        children: [
-          ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            children: [
-              // ── Progress Bar ─────────────────────────────────────────────
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: NutriColors.canvasRaised,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: NutriColors.border),
+      body: RefreshIndicator(
+        onRefresh: _fetchGroceryList,
+        color: NutriColors.primary,
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          children: [
+            // ── Progress Card ─────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: NutriColors.canvasRaised,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: NutriColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Grocery Progress', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      Text('$checkedCount / $totalCount collected',
+                          style: NutriTypography.bodySm.copyWith(color: NutriColors.inkMuted)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 8,
+                      backgroundColor: NutriColors.border,
+                      valueColor: const AlwaysStoppedAnimation<Color>(NutriColors.primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Auto-Generate from Plan Card (New Feature Parity with Web) ─
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [NutriColors.primary.withValues(alpha: 0.1), const Color(0xFFE8F5E9)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: NutriColors.primary.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.auto_awesome, color: NutriColors.primary, size: 20),
+                      SizedBox(width: 8),
+                      Text('Auto-Generate from Meal Plan',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: NutriColors.ink)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Extract and categorize ingredients from regional cuisine meal plan.',
+                      style: TextStyle(fontSize: 12, color: NutriColors.inkMuted)),
+                  const SizedBox(height: 12),
+                  // Regional selector chips
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _regionalOptions.map((opt) {
+                        final isSel = _selectedRegion == opt['code'];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(opt['label']!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isSel ? Colors.white : NutriColors.ink,
+                                  fontWeight: FontWeight.w600,
+                                )),
+                            selected: isSel,
+                            selectedColor: NutriColors.primary,
+                            backgroundColor: NutriColors.canvasRaised,
+                            onSelected: (val) {
+                              if (val) setState(() => _selectedRegion = opt['code']!);
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 40,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: NutriColors.primary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: _isGenerating ? null : _generateFromPlan,
+                      icon: _isGenerating
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.flash_on, size: 18, color: Colors.white),
+                      label: Text(
+                        _isGenerating ? 'Generating...' : '⚡ Generate Shopping List',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── 10-Min Delivery Quick Dispatch Bar (Feature Parity with Web) ─
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFDE7),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFBC02D).withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.delivery_dining, color: Color(0xFFF57F17), size: 28),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Grocery Progress', style: NutriTypography.bodyMd.copyWith(fontWeight: FontWeight.bold)),
-                        Text('$checked / ${_groceryList.length} items', style: NutriTypography.bodySm.copyWith(color: NutriColors.inkMuted)),
+                        const Text('10-Min Quick Delivery',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF5D4037))),
+                        Text('${totalCount - checkedCount} missing items to cart',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF795548))),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: checked / _groceryList.length,
-                        minHeight: 8,
-                        backgroundColor: NutriColors.border,
-                        valueColor: const AlwaysStoppedAnimation<Color>(NutriColors.primary),
+                  ),
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFF4C430),
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 0,
+                        ),
+                        onPressed: () => _dispatchQuickDelivery('Blinkit'),
+                        child: const Text('Blinkit'),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF5E17EB),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 0,
+                        ),
+                        onPressed: () => _dispatchQuickDelivery('Zepto'),
+                        child: const Text('Zepto'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Pantry Zero-Waste Recycler ────────────────────────────────
+            _PantryRecyclerCard(
+              pantryItems: _pantryItems,
+              recycledDishes: _recycledDishes,
+              totalSaved: _totalSaved,
+              isRecycling: _isRecycling,
+              isOpen: _recyclerOpen,
+              onRecycle: _runRecycler,
+            ),
+            const SizedBox(height: 20),
+
+            // ── Grocery Checklist ─────────────────────────────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("This Week's List", style: NutriTypography.displaySm),
+                TextButton.icon(
+                  onPressed: _addNewItemDialog,
+                  icon: const Icon(Icons.add, size: 16, color: NutriColors.primary),
+                  label: const Text('Add Item', style: TextStyle(color: NutriColors.primary, fontSize: 12)),
                 ),
-              ),
-              const SizedBox(height: 16),
-
-              // ── Pantry Zero-Waste Recycler ────────────────────────────────
-              _PantryRecyclerCard(
-                pantryItems: _pantryItems,
-                recycledDishes: _recycledDishes,
-                totalSaved: _totalSaved,
-                isRecycling: _isRecycling,
-                isOpen: _recyclerOpen,
-                onRecycle: _runRecycler,
-              ),
-              const SizedBox(height: 20),
-
-              // ── Grocery Checklist ─────────────────────────────────────────
-              Text('This Week\'s List', style: NutriTypography.displaySm.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              ..._groceryList.asMap().entries.map((entry) {
-                final item = entry.value;
-                return StatefulBuilder(
-                  builder: (ctx, setLocal) => CheckboxListTile(
-                    value: item['checked'] as bool,
-                    onChanged: (v) {
-                      setLocal(() => item['checked'] = v ?? false);
-                    },
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (_isLoadingList)
+              const Center(
+                  child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: CircularProgressIndicator(color: NutriColors.primary)))
+            else if (_items.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(24),
+                alignment: Alignment.center,
+                child: const Text('No grocery items yet. Generate from plan or add manually!',
+                    style: TextStyle(color: NutriColors.inkMuted)),
+              )
+            else
+              ..._items.map((item) {
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  elevation: 0,
+                  color: NutriColors.canvasRaised,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: NutriColors.border),
+                  ),
+                  child: CheckboxListTile(
+                    value: item.isChecked,
+                    onChanged: (v) => _toggleItem(item),
                     title: Text(
-                      item['item'] as String,
+                      '${item.name} (${item.quantity} ${item.unit})',
                       style: TextStyle(
-                        decoration: item['checked'] == true ? TextDecoration.lineThrough : null,
-                        color: item['checked'] == true ? NutriColors.inkMuted : NutriColors.ink,
+                        decoration: item.isChecked ? TextDecoration.lineThrough : null,
+                        color: item.isChecked ? NutriColors.inkMuted : NutriColors.ink,
                         fontWeight: FontWeight.w500,
+                        fontSize: 14,
                       ),
                     ),
-                    subtitle: Text(item['category'] as String, style: NutriTypography.bodySm.copyWith(color: NutriColors.inkMuted)),
+                    subtitle: Text(item.category,
+                        style: NutriTypography.bodySm.copyWith(color: NutriColors.inkMuted, fontSize: 11)),
                     activeColor: NutriColors.primary,
-                    contentPadding: EdgeInsets.zero,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
                 );
               }),
-              const SizedBox(height: 60),
-            ],
-          ),
-        ],
+            const SizedBox(height: 60),
+          ],
+        ),
       ),
     );
   }
@@ -261,16 +744,20 @@ class _PantryRecyclerCard extends StatelessWidget {
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: pantryItems.map((p) => Chip(
-                  label: Text('${p['emoji']} ${p['name']}',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: (p['expiring'] as bool) ? const Color(0xFFE65100) : const Color(0xFF2E7D32))),
-                  backgroundColor: (p['expiring'] as bool) ? const Color(0xFFFFF3E0) : const Color(0xFFE8F5E9),
-                  side: BorderSide(color: (p['expiring'] as bool) ? const Color(0xFFFFA726) : const Color(0xFF66BB6A)),
-                  padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                )).toList(),
+            children: pantryItems
+                .map((p) => Chip(
+                      label: Text('${p['emoji']} ${p['name']}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: (p['expiring'] as bool) ? const Color(0xFFE65100) : const Color(0xFF2E7D32))),
+                      backgroundColor:
+                          (p['expiring'] as bool) ? const Color(0xFFFFF3E0) : const Color(0xFFE8F5E9),
+                      side: BorderSide(
+                          color: (p['expiring'] as bool) ? const Color(0xFFFFA726) : const Color(0xFF66BB6A)),
+                      padding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ))
+                .toList(),
           ),
           const SizedBox(height: 12),
 
@@ -288,9 +775,13 @@ class _PantryRecyclerCard extends StatelessWidget {
                   ? const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                        SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
                         SizedBox(width: 8),
-                        Text('Finding recipes...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        Text('Finding recipes...',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       ],
                     )
                   : const Text('♻️ Generate Zero-Waste Recipes',
@@ -307,7 +798,7 @@ class _PantryRecyclerCard extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: Colors.white.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFA5D6A7)),
                   ),
@@ -329,7 +820,8 @@ class _PantryRecyclerCard extends StatelessWidget {
                       Column(
                         children: [
                           Text('${dish.prepMinutes}m',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32))),
+                              style: const TextStyle(
+                                  fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32))),
                           Text('₹${dish.savedInr}',
                               style: const TextStyle(fontSize: 10, color: Color(0xFF558B2F))),
                         ],

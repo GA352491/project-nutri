@@ -124,7 +124,15 @@ async def main():
     print("  - subscription-task-queue")
     print("  - reminder-task-queue")
     print("  - grocery-delivery-task-queue")
-    print("  👉 Temporal Web UI: http://localhost:8233/workflows\n")
+    try:
+        from .service_registry import TEMPORAL_UI_URL as _temporal_ui
+    except ImportError:
+        import os
+        _scheme = os.getenv("APP_SCHEME", "http")
+        _domain = os.getenv("APP_DOMAIN", "localhost")
+        _port   = os.getenv("APP_PORT_TEMPORAL_UI", "8233")
+        _temporal_ui = f"{_scheme}://{_domain}:{_port}"
+    print(f"  👉 Temporal Web UI: {_temporal_ui}/workflows\n")
 
     await asyncio.gather(
         booking_worker.run(),

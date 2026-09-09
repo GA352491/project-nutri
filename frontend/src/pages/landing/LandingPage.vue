@@ -150,47 +150,47 @@ const plans = [
         <!-- Trust Badge -->
         <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary-soft border border-primary/25 text-primary text-[0.8rem] font-semibold mb-6 shadow-xs">
           <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          <span>Grounded in ICMR-NIN Science &amp; Authentic Regional Indian Cuisines</span>
+          <span>Supervised by Verified Clinical Dietitians &amp; Grounded in ICMR-NIN / IFCT Standards</span>
         </div>
 
         <!-- Headline -->
         <h1 class="font-display font-bold text-[2.8rem] sm:text-[3.8rem] lg:text-[4.6rem] leading-[1.08] text-ink max-w-4xl tracking-tight mb-6">
-          Your Personal AI <br class="hidden sm:inline" />
-          <span class="text-primary italic">Precision Nutrition</span> Engine.
+          Clinically Supervised <br class="hidden sm:inline" />
+          <span class="text-primary italic">Metabolic &amp; Nutritional</span> Care.
         </h1>
 
         <!-- Subheadline -->
         <p class="font-body text-[1.05rem] sm:text-[1.2rem] text-ink-muted max-w-2xl leading-relaxed mb-10">
-          Personalized weekly regional meal plans, instant food diary tracking, 1-click Zepto &amp; Blinkit grocery checkout, and certified dietitian co-pilots.
+          Not another generic AI chatbot prompt. Precision meal therapy with zero-hallucination USDA/IFCT math, co-signed by licensed dietitians, synced to your wearables, and fulfilled in 10-minute grocery runs.
         </p>
 
         <!-- CTA Action Buttons -->
         <div class="flex flex-col sm:flex-row gap-4 mb-16">
           <Button variant="primary" size="lg" @click="router.push('/register')" class="shadow-sm">
-            Get Started Free — No Card Needed
+            Consult a Clinical Dietitian — Start Free
           </Button>
           <Button variant="outline" size="lg" @click="router.push('/login')">
-            Explore Demo Experience →
+            Explore Clinical Care Platform →
           </Button>
         </div>
 
         <!-- Metric Proof Points -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl w-full pt-8 border-t border-border/80">
           <div class="p-4 rounded-xl bg-canvas-raised border border-border shadow-xs">
-            <div class="font-display font-bold text-[1.8rem] text-primary">12,000+</div>
-            <div class="text-[0.78rem] font-data text-ink-muted mt-0.5 uppercase tracking-wider">Active Members</div>
-          </div>
-          <div class="p-4 rounded-xl bg-canvas-raised border border-border shadow-xs">
-            <div class="font-display font-bold text-[1.8rem] text-primary">&lt;15ms</div>
-            <div class="text-[0.78rem] font-data text-ink-muted mt-0.5 uppercase tracking-wider">Meal Swap Solver</div>
-          </div>
-          <div class="p-4 rounded-xl bg-canvas-raised border border-border shadow-xs">
-            <div class="font-display font-bold text-[1.8rem] text-primary">10-Min</div>
-            <div class="text-[0.78rem] font-data text-ink-muted mt-0.5 uppercase tracking-wider">Cart Delivery Sync</div>
-          </div>
-          <div class="p-4 rounded-xl bg-canvas-raised border border-border shadow-xs">
             <div class="font-display font-bold text-[1.8rem] text-primary">100%</div>
-            <div class="text-[0.78rem] font-data text-ink-muted mt-0.5 uppercase tracking-wider">ICMR-NIN IFCT Aligned</div>
+            <div class="font-body text-[0.8rem] text-ink-muted font-medium mt-1">Verified Clinical Math (No AI Guesswork)</div>
+          </div>
+          <div class="p-4 rounded-xl bg-canvas-raised border border-border shadow-xs">
+            <div class="font-display font-bold text-[1.8rem] text-primary">500+</div>
+            <div class="font-body text-[0.8rem] text-ink-muted font-medium mt-1">Licensed Clinical Dietitians</div>
+          </div>
+          <div class="p-4 rounded-xl bg-canvas-raised border border-border shadow-xs">
+            <div class="font-display font-bold text-[1.8rem] text-primary">Sub-20ms</div>
+            <div class="font-body text-[0.8rem] text-ink-muted font-medium mt-1">Deterministic Macro &amp; Salt Solver</div>
+          </div>
+          <div class="p-4 rounded-xl bg-canvas-raised border border-border shadow-xs">
+            <div class="font-display font-bold text-[1.8rem] text-primary">Closed Loop</div>
+            <div class="font-body text-[0.8rem] text-ink-muted font-medium mt-1">Wearables &bull; 1-Click Grocery &bull; Telehealth</div>
           </div>
         </div>
 

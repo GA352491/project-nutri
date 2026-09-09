@@ -61,19 +61,8 @@ class AuthService {
   }
 
   Future<UserModel> getCurrentUser() async {
-    try {
-      final response = await _apiClient.dio.get('${ApiEndpoints.authBaseUrl}/me');
-      return UserModel.fromJson(response.data);
-    } catch (_) {
-      // Fallback demo user if running in offline mode
-      return const UserModel(
-        id: 'usr_local_1',
-        email: 'user@nutriplan.local',
-        name: 'Demo Patient',
-        role: 'patient',
-        hasCompletedOnboarding: true,
-      );
-    }
+    final response = await _apiClient.dio.get('${ApiEndpoints.authBaseUrl}/me');
+    return UserModel.fromJson(response.data);
   }
 
   Future<void> logout() async {

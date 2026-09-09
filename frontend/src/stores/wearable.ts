@@ -35,8 +35,30 @@ export interface WearableSummary {
   has_data?: boolean
 }
 
+export interface CGMLiveTelemetry {
+  user_id: string
+  sensor_model: string
+  current_glucose_mg_dl: number
+  trend_arrow: string
+  time_in_range_pct: number
+  average_glucose_mg_dl: number
+  estimated_hba1c: number
+  readings_24h: Array<{
+    timestamp: string
+    time_label: string
+    glucose_mg_dl: number
+    in_range: boolean
+  }>
+  active_alert?: {
+    severity: string
+    message: string
+  } | null
+  glycemic_variability_cv_pct: number
+}
+
 export const useWearableStore = defineStore('wearable', () => {
   const summary = ref<WearableSummary | null>(null)
+  const cgmTelemetry = ref<CGMLiveTelemetry | null>(null)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
@@ -51,6 +73,17 @@ export const useWearableStore = defineStore('wearable', () => {
       console.warn('Wearable backend service unavailable:', err)
     } finally {
       isLoading.value = false
+    }
+  }
+
+  async function fetchLiveCgm(userId: string, scenario: 'fiber_first' | 'carbs_first' | 'fasting' = 'fiber_first') {
+    try {
+      const res = await apiClient.get(`/wearable/cgm/live-stream/${userId}?scenario=${scenario}`)
+      cgmTelemetry.value = res.data
+      return res.data
+    } catch (err) {
+      console.warn('CGM Live stream unavailable:', err)
+      return null
     }
   }
 
@@ -75,5 +108,14 @@ export const useWearableStore = defineStore('wearable', () => {
     }
   }
 
-  return { summary, isLoading, error, fetchSummary, ingestReading, triggerOAuth }
+  return { 
+    summary, 
+    cgmTelemetry, 
+    isLoading, 
+    error, 
+    fetchSummary, 
+    fetchLiveCgm, 
+    ingestReading, 
+    triggerOAuth 
+  }
 })

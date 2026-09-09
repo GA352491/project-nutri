@@ -36,7 +36,17 @@ class NutriColors {
 
   // Borders
   static const Color border = Color(0xFFDFE4E0);
+
+  // Semantic UI aliases for components
+  static const Color background = canvas;
+  static const Color surface = canvasRaised;
+  static const Color surfaceAlt = primarySoft;
+  static const Color textPrimary = ink;
+  static const Color textSecondary = inkMuted;
 }
+
+/// Alias so both AppColors and NutriColors work at call sites
+typedef AppColors = NutriColors;
 
 /// Macro nutrient colours for charts
 class MacroColors {

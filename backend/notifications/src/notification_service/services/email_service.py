@@ -8,10 +8,14 @@ Handles transactional email generation, branded HTML templates, and delivery for
 4. Weekly Clinical Nutrition Summary Reports
 """
 import logging
+import os
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, EmailStr
 
 logger = logging.getLogger(__name__)
+
+# Frontend URL for email CTAs — sourced from .env (FRONTEND_URL set by root .env)
+_FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 class EmailPayload(BaseModel):
     to_email: str
@@ -52,7 +56,7 @@ class EmailService:
                     <li>Connect your Fitbit or Apple Watch in the Wearables Hub</li>
                   </ul>
                 </div>
-                <a href="http://localhost:5173/dashboard" style="display: inline-block; background-color: #2F5233; color: #FFFFFF; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; font-size: 14px; margin-top: 12px;">
+                <a href="{_FRONTEND_URL}/dashboard" style="display: inline-block; background-color: #2F5233; color: #FFFFFF; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; font-size: 14px; margin-top: 12px;">
                   Open Your Dashboard →
                 </a>
                 <p style="font-size: 11px; color: #8F9E95; margin-top: 32px; border-top: 1px solid #DFE4E0; pt-4;">
@@ -67,7 +71,7 @@ class EmailService:
         elif template == "appointment_reminder":
             provider = data.get("provider_name", "Your Dietitian")
             date_time = data.get("date_time", "Tomorrow at 10:00 AM")
-            room_url = data.get("room_url", "http://localhost:5173/appointments")
+            room_url = data.get("room_url", f"{_FRONTEND_URL}/appointments")
             subject = f"Reminder: Video Consultation with {provider} 📹"
             html = f"""
             <!DOCTYPE html>
@@ -100,7 +104,7 @@ class EmailService:
               <div style="max-width: 600px; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; border: 1px solid #DFE4E0; padding: 32px;">
                 <h2 style="font-size: 20px; color: #2F5233;">Don't forget to log {meal_type}! 🥗</h2>
                 <p style="font-size: 14px; color: #52635A;">Hi {name}, snap a quick photo or search your food in the diary to hit your daily macro targets.</p>
-                <a href="http://localhost:5173/diary" style="display: inline-block; background-color: #2F5233; color: #FFFFFF; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; font-size: 14px; margin-top: 12px;">
+                <a href="{_FRONTEND_URL}/diary" style="display: inline-block; background-color: #2F5233; color: #FFFFFF; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: bold; font-size: 14px; margin-top: 12px;">
                   Log {meal_type} Now →
                 </a>
               </div>

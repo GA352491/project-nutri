@@ -99,4 +99,10 @@ class NutriTypography {
     letterSpacing: 0.8,
     color: NutriColors.inkMuted,
   );
+
+  // Semantic heading alias
+  static const TextStyle headingMedium = displayMd;
 }
+
+/// Alias so both AppTypography and NutriTypography work at call sites
+typedef AppTypography = NutriTypography;

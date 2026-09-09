@@ -54,6 +54,9 @@ lerna-debug.log*
 frontend/dist/
 frontend/dist-ssr/
 frontend/.tempmediaStorage/
+frontend/playwright-report/
+frontend/test-results/
+build_artifacts/
 *.local
 
 # Environment variables & secrets

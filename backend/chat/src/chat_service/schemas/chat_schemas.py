@@ -36,6 +36,13 @@ class AcceptIntakeRequest(BaseModel):
     welcome_message: Optional[str] = None
 
 
+class InitiateIntakeRequest(BaseModel):
+    patient_email: str
+    expert_email: str = "expert@nutriplan.local"
+    patient_name: str = ""
+    intake_summary: str = ""
+
+
 class ThreadSummaryResponse(BaseModel):
     room_id: str
     patient_name: str

@@ -426,3 +426,129 @@ async def predict_glucose_spike(req: CGMPredictRequest):
         )
     )
 
+
+# ── Feature 5: Real-Time CGM Live Sensor Simulator Stream ─────────────────────
+
+class CGMLiveTelemetryResponse(BaseModel):
+    user_id: str
+    sensor_model: str
+    current_glucose_mg_dl: float
+    trend_arrow: str  # '↑↑' | '↑' | '→' | '↓' | '↓↓'
+    time_in_range_pct: float  # Target 70-140 mg/dL: >70%
+    average_glucose_mg_dl: float
+    estimated_hba1c: float
+    readings_24h: List[Dict[str, Any]]
+    active_alert: Optional[Dict[str, str]]
+    glycemic_variability_cv_pct: float
+
+
+@router.get("/cgm/live-stream/{user_id}", response_model=CGMLiveTelemetryResponse, summary="Live CGM Continuous Glucose Monitor sensor feed")
+async def get_cgm_live_telemetry(user_id: str, scenario: str = Query("fiber_first", enum=["fiber_first", "carbs_first", "fasting"])):
+    """
+    Continuous Glucose Monitor (FreeStyle Libre 3 / Dexcom G7) Live Telemetry Feed.
+    Generates physiological 24-hour interstitial glucose sensor telemetry with clinical indicators:
+    - Time-In-Range (TIR %)
+    - Real-time rate of change trend arrows
+    - Glucose Management Indicator (estimated HbA1c)
+    - Threshold excursion alerts (hypo <70 / hyper >180 mg/dL)
+    """
+    import math
+    import random
+
+    now = datetime.now()
+    base = 92.0
+    readings = []
+    
+    # 48 data points (one every 30 minutes over 24h)
+    for i in range(48):
+        t_offset = 47 - i
+        sample_time = now.timestamp() - (t_offset * 1800)
+        dt = datetime.fromtimestamp(sample_time)
+        hour = dt.hour + (dt.minute / 60.0)
+
+        # Baseline diurnal circadian rhythm
+        glucose = base + 5.0 * math.sin((hour - 4.0) * math.pi / 12.0)
+
+        if scenario == "carbs_first":
+            # Breakfast excursion (8am)
+            if 8.0 <= hour <= 10.5:
+                glucose += 75.0 * math.exp(-((hour - 9.0) ** 2) / 0.8)
+            # Lunch excursion (1pm)
+            elif 13.0 <= hour <= 15.5:
+                glucose += 68.0 * math.exp(-((hour - 14.0) ** 2) / 0.9)
+            # Dinner excursion (8pm)
+            elif 20.0 <= hour <= 23.0:
+                glucose += 85.0 * math.exp(-((hour - 21.0) ** 2) / 1.0)
+        elif scenario == "fiber_first":
+            # Flattened excursions due to pre-meal fiber primer & protein anchor
+            if 8.0 <= hour <= 10.5:
+                glucose += 32.0 * math.exp(-((hour - 9.0) ** 2) / 1.2)
+            elif 13.0 <= hour <= 15.5:
+                glucose += 30.0 * math.exp(-((hour - 14.0) ** 2) / 1.2)
+            elif 20.0 <= hour <= 23.0:
+                glucose += 36.0 * math.exp(-((hour - 21.0) ** 2) / 1.4)
+        
+        # Sensor micro-noise
+        glucose += random.uniform(-1.8, 1.8)
+        val = round(max(65.0, min(240.0, glucose)), 1)
+        readings.append({
+            "timestamp": dt.isoformat(),
+            "time_label": dt.strftime("%I:%M %p").lstrip("0"),
+            "glucose_mg_dl": val,
+            "in_range": 70.0 <= val <= 140.0,
+        })
+
+    current_val = readings[-1]["glucose_mg_dl"]
+    prev_val = readings[-2]["glucose_mg_dl"]
+    delta = current_val - prev_val
+
+    if delta > 3.0:
+        trend = "↑↑"
+    elif delta > 1.0:
+        trend = "↑"
+    elif delta < -3.0:
+        trend = "↓↓"
+    elif delta < -1.0:
+        trend = "↓"
+    else:
+        trend = "→"
+
+    all_vals = [r["glucose_mg_dl"] for r in readings]
+    in_range_count = sum(1 for v in all_vals if 70.0 <= v <= 140.0)
+    tir_pct = round((in_range_count / len(all_vals)) * 100.0, 1)
+    avg_glucose = round(sum(all_vals) / len(all_vals), 1)
+    # ADA / EASD validated formula: eA1c = (mean glucose + 46.7) / 28.7
+    ea1c = round((avg_glucose + 46.7) / 28.7, 1)
+
+    # Glycemic variability (Coefficient of Variation) = SD / Mean * 100
+    mean_val = avg_glucose
+    variance = sum((x - mean_val) ** 2 for x in all_vals) / len(all_vals)
+    sd = math.sqrt(variance)
+    cv_pct = round((sd / mean_val) * 100.0, 1)
+
+    active_alert = None
+    if current_val > 180.0:
+        active_alert = {
+            "severity": "HIGH",
+            "message": f"Hyperglycemia Alert: Glucose is {current_val} mg/dL ({trend}). Take a 15-minute brisk walk to stimulate insulin-independent GLUT4 glucose uptake.",
+        }
+    elif current_val < 70.0:
+        active_alert = {
+            "severity": "CRITICAL",
+            "message": f"Hypoglycemia Warning: Glucose is {current_val} mg/dL ({trend}). Consume 15g fast-acting carbohydrate (Rule of 15).",
+        }
+
+    return CGMLiveTelemetryResponse(
+        user_id=user_id,
+        sensor_model="FreeStyle Libre 3 (Continuous Sensor)",
+        current_glucose_mg_dl=current_val,
+        trend_arrow=trend,
+        time_in_range_pct=tir_pct,
+        average_glucose_mg_dl=avg_glucose,
+        estimated_hba1c=ea1c,
+        readings_24h=readings,
+        active_alert=active_alert,
+        glycemic_variability_cv_pct=cv_pct
+    )
+
+

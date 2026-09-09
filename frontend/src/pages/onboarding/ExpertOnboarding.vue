@@ -2,275 +2,497 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import Button from '../../components/ui/Button.vue'
-import apiClient from '../../api'
+import VerificationBadge from '../../components/VerificationBadge.vue'
+import { useVerificationStore } from '../../stores/verification'
 
 const router = useRouter()
+const store = useVerificationStore()
 
-// Form state
-const step = ref<1 | 2>(1)
+const step = ref<1 | 2 | 3>(1)
 const isSubmitting = ref(false)
+const submittedAppId = ref<string | null>(null)
 const errorMsg = ref('')
 
 const form = ref({
- name: '',
- email: '',
- bio: '',
- hourly_rate_usd: 80,
- specialties: [] as string[],
- certifications: [] as string[],
- newSpecialty: '',
- newCertification: '',
+  name: '',
+  email: '',
+  phone: '',
+  bio: '',
+  hourlyRateUsd: 80,
+  experienceYears: 1,
+  specialties: [] as string[],
+  ncahpRegNumber: '',
+  idaMembershipNumber: '',
+  degreeInstitution: '',
+  degreeYear: '',
+  degreeDigilockerRef: '',
+  sampleCases: '',
+  newSpecialty: '',
 })
 
 const SPECIALTY_OPTIONS = [
- 'Diabetes', 'PCOS', 'Weight Loss', 'Keto', 'Sports Nutrition',
- 'Gut Health', 'Thyroid', 'Metabolic Health', 'Vegetarian Nutrition',
- 'Post-partum', 'Renal (CKD)', 'Hypertrophy', 'Fat Loss',
+  'Diabetes', 'PCOS', 'Weight Loss', 'Keto', 'Sports Nutrition',
+  'Gut Health', 'Thyroid', 'Metabolic Health', 'Vegetarian Nutrition',
+  'Post-partum', 'Renal (CKD)', 'Hypertrophy', 'Fat Loss', 'Clinical Nutrition',
 ]
 
 const isStep1Valid = computed(() =>
- form.value.name.trim().length > 2 &&
- form.value.bio.trim().length > 20 &&
- form.value.hourly_rate_usd >= 20
+  form.value.name.trim().length > 2 &&
+  form.value.email.trim().includes('@') &&
+  form.value.bio.trim().length > 30 &&
+  form.value.experienceYears >= 1
+)
+
+const isStep2Valid = computed(() =>
+  form.value.degreeInstitution.trim().length > 3 &&
+  form.value.degreeYear.length === 4
 )
 
 function toggleSpecialty(s: string) {
- const idx = form.value.specialties.indexOf(s)
- if (idx === -1) form.value.specialties.push(s)
- else form.value.specialties.splice(idx, 1)
+  const idx = form.value.specialties.indexOf(s)
+  if (idx === -1) form.value.specialties.push(s)
+  else form.value.specialties.splice(idx, 1)
 }
 
 function addCustomSpecialty() {
- const v = form.value.newSpecialty.trim()
- if (v && !form.value.specialties.includes(v)) {
- form.value.specialties.push(v)
- }
- form.value.newSpecialty = ''
+  const v = form.value.newSpecialty.trim()
+  if (v && !form.value.specialties.includes(v)) form.value.specialties.push(v)
+  form.value.newSpecialty = ''
 }
 
-function addCertification() {
- const v = form.value.newCertification.trim()
- if (v && !form.value.certifications.includes(v)) {
- form.value.certifications.push(v)
- }
- form.value.newCertification = ''
+async function submit() {
+  if (!isStep1Valid.value || !isStep2Valid.value) return
+  isSubmitting.value = true
+  errorMsg.value = ''
+  try {
+    const result = await store.submitApplication({
+      name: form.value.name,
+      email: form.value.email,
+      phone: form.value.phone,
+      bio: form.value.bio,
+      hourlyRateUsd: form.value.hourlyRateUsd,
+      experienceYears: form.value.experienceYears,
+      specialties: form.value.specialties,
+      ncahpRegNumber: form.value.ncahpRegNumber || undefined,
+      idaMembershipNumber: form.value.idaMembershipNumber || undefined,
+      degreeInstitution: form.value.degreeInstitution,
+      degreeYear: form.value.degreeYear,
+      degreeDigilockerRef: form.value.degreeDigilockerRef || undefined,
+      sampleCases: form.value.sampleCases || undefined,
+    })
+    if (result.success) {
+      submittedAppId.value = result.id
+      step.value = 3
+    }
+  } catch (e: any) {
+    errorMsg.value = e.message ?? 'Submission failed. Please try again.'
+  } finally {
+    isSubmitting.value = false
+  }
 }
 
-function removeCertification(c: string) {
- form.value.certifications = form.value.certifications.filter(x => x !== c)
-}
-
-async function submitOnboarding() {
- if (!isStep1Valid.value) return
- isSubmitting.value = true
- errorMsg.value = ''
-
- try {
- const payload = {
- name: form.value.name.trim(),
- email: form.value.email.trim(),
- bio: form.value.bio.trim(),
- hourly_rate_usd: form.value.hourly_rate_usd,
- specialties: form.value.specialties,
- certifications: form.value.certifications,
- }
- const res = await apiClient.post('/marketplace/nutritionists/onboard', payload)
- const data = res.data
- if (data.onboarding_url && data.onboarding_url.startsWith('http')) {
- // Redirect to Stripe Connect hosted onboarding
- window.location.href = data.onboarding_url
- } else {
- // Stripe unavailable locally — show success anyway
- step.value = 2
- }
- } catch (err: any) {
- errorMsg.value = err?.response?.data?.detail || 'Onboarding failed. Please try again.'
- } finally {
- isSubmitting.value = false
- }
-}
+// Timeline steps for status tracker
+const timeline = [
+  { id: 'submitted',  label: 'Application Submitted',     icon: '📝', desc: 'Your credentials are in the queue.' },
+  { id: 'registry',  label: 'Registry Check',             icon: '🏛️', desc: 'Ops checks NCAHP Central Register + IDA directory.' },
+  { id: 'degree',    label: 'Degree Verification',        icon: '🎓', desc: 'University confirms your qualification.' },
+  { id: 'approved',  label: 'Badge Issued',               icon: '🛡️', desc: 'Verified badge appears on your public profile.' },
+]
 </script>
 
 <template>
- <div class="min-h-screen bg-canvas flex items-center justify-center py-10 px-4">
- <div class="w-full max-w-xl">
+  <div class="expert-onboard">
 
- <!-- Header -->
- <div class="text-center mb-10">
- <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary-dark mb-4 shadow-lg">
- <svg class="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
- <path stroke-linecap="round" stroke-linejoin="round"
- d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806
- 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438
- 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806
- 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138
- 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946
- 3.42 3.42 0 013.138-3.138z" />
- </svg>
- </div>
- <h1 class="font-display font-bold text-[2rem] text-ink">Join as a Nutritionist</h1>
- <p class="font-body text-ink-muted text-[1rem] mt-2 max-w-md mx-auto">
- Build your client base on NutriPlan. Set your own rates and receive 80% of every booking.
- </p>
- </div>
+    <!-- Progress bar -->
+    <div v-if="step < 3" class="progress-wrap">
+      <div class="progress-steps">
+        <div
+          v-for="(label, i) in ['Your Profile', 'Credentials & Verification', 'Under Review']"
+          :key="i"
+          class="progress-step"
+          :class="{ 'progress-step--done': step > i + 1, 'progress-step--active': step === i + 1 }"
+        >
+          <div class="ps-circle">{{ step > i + 1 ? '✓' : i + 1 }}</div>
+          <span class="ps-label">{{ label }}</span>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" :style="{ width: `${((step - 1) / 2) * 100}%` }" />
+      </div>
+    </div>
 
- <!-- Step 1: Profile Form -->
- <div v-if="step === 1" class="bg-canvas-raised border border-border rounded-2xl p-8 shadow-sm space-y-6">
+    <!-- ── STEP 1: Profile ──────────────────────────────────────────────── -->
+    <div v-if="step === 1" class="step-card">
+      <div class="step-header">
+        <div class="step-emoji">👩‍⚕️</div>
+        <div>
+          <h2 class="step-title">Join as a Nutrition Expert</h2>
+          <p class="step-sub">Build your profile. Credentials are verified in Step 2 — we follow NCAHP &amp; IDA standards.</p>
+        </div>
+      </div>
 
- <!-- Progress -->
- <div class="flex gap-2 mb-2">
- <div class="h-1 flex-1 rounded-full bg-primary"></div>
- <div class="h-1 flex-1 rounded-full bg-border"></div>
- </div>
- <p class="font-data text-[0.72rem] uppercase tracking-widest text-ink-muted">Step 1 of 2 — Your Profile</p>
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="form-label">Full Name *</label>
+          <input v-model="form.name" class="form-input" placeholder="Dr. Priya Sharma" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Email Address *</label>
+          <input v-model="form.email" type="email" class="form-input" placeholder="you@example.com" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Phone (WhatsApp preferred)</label>
+          <input v-model="form.phone" class="form-input" placeholder="+91-98765-43210" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Years of Experience *</label>
+          <input v-model.number="form.experienceYears" type="number" min="1" class="form-input" />
+        </div>
+        <div class="form-field form-field--full">
+          <label class="form-label">Professional Bio * <span class="form-hint">(min 30 chars)</span></label>
+          <textarea v-model="form.bio" class="form-textarea" rows="3" placeholder="Describe your clinical background, patient outcomes, and approach…" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Consultation Rate (USD/hr)</label>
+          <input v-model.number="form.hourlyRateUsd" type="number" min="20" class="form-input" />
+          <span class="form-hint-block">≈ ₹{{ Math.round(form.hourlyRateUsd * 84) }}/hr · Platform takes 15–20% commission</span>
+        </div>
+      </div>
 
- <div v-if="errorMsg" class="bg-danger/10 text-danger text-sm p-3 rounded-lg border border-danger/20">
- {{ errorMsg }}
- </div>
+      <!-- Specialties -->
+      <div class="form-section">
+        <label class="form-label">Specializations</label>
+        <div class="specialty-grid">
+          <button
+            v-for="s in SPECIALTY_OPTIONS"
+            :key="s"
+            class="spec-btn"
+            :class="{ 'spec-btn--on': form.specialties.includes(s) }"
+            type="button"
+            @click="toggleSpecialty(s)"
+          >{{ s }}</button>
+        </div>
+        <div class="custom-spec-row">
+          <input v-model="form.newSpecialty" class="form-input" placeholder="Add custom specialization…" @keyup.enter="addCustomSpecialty" />
+          <Button variant="outline" size="sm" @click="addCustomSpecialty">Add</Button>
+        </div>
+        <div v-if="form.specialties.length" class="selected-chips">
+          <span v-for="s in form.specialties" :key="s" class="selected-chip">
+            {{ s }}
+            <button class="chip-remove" @click="toggleSpecialty(s)">×</button>
+          </span>
+        </div>
+      </div>
 
- <!-- Name -->
- <div>
- <label class="block font-body text-[0.85rem] font-semibold text-ink mb-1">Full Name & Credentials</label>
- <input
- v-model="form.name"
- placeholder="e.g. Dr. Sarah Jenkins, RD"
- class="w-full font-body text-[0.95rem] text-ink bg-canvas border border-border rounded-xl px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition"
- />
- </div>
+      <div class="step-footer">
+        <Button :disabled="!isStep1Valid" @click="step = 2">Continue to Credentials →</Button>
+      </div>
+    </div>
 
- <!-- Email -->
- <div>
- <label class="block font-body text-[0.85rem] font-semibold text-ink mb-1">Email Address</label>
- <input
- v-model="form.email"
- type="email"
- placeholder="you@example.com"
- class="w-full font-body text-[0.95rem] text-ink bg-canvas border border-border rounded-xl px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition"
- />
- <p class="font-body text-[0.75rem] text-ink-muted mt-1">Used for Stripe payouts. Not shown publicly.</p>
- </div>
+    <!-- ── STEP 2: Credentials ──────────────────────────────────────────── -->
+    <div v-else-if="step === 2" class="step-card">
+      <div class="step-header">
+        <div class="step-emoji">🏛️</div>
+        <div>
+          <h2 class="step-title">Credential Verification</h2>
+          <p class="step-sub">We check NCAHP Central Register &amp; IDA directory. Provide as much as you have — more = faster Gold badge.</p>
+        </div>
+      </div>
 
- <!-- Bio -->
- <div>
- <label class="block font-body text-[0.85rem] font-semibold text-ink mb-1">Professional Bio</label>
- <textarea
- v-model="form.bio"
- rows="3"
- placeholder="Describe your expertise, approach, and who you work best with..."
- class="w-full font-body text-[0.95rem] text-ink bg-canvas border border-border rounded-xl px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition resize-none"
- />
- </div>
+      <!-- Badge tier explainer -->
+      <div class="tier-explainer">
+        <div class="tier-ex-title">Which badge will you receive?</div>
+        <div class="tier-ex-cards">
+          <div class="tier-ex-card">
+            <VerificationBadge tier="ncahp_verified" status="verified" size="sm" />
+            <p class="tier-ex-desc">Provide your NCAHP registration number → Gold badge (fastest trust signal)</p>
+          </div>
+          <div class="tier-ex-card">
+            <VerificationBadge tier="ida_verified" status="verified" size="sm" />
+            <p class="tier-ex-desc">IDA RD membership number → Silver badge</p>
+          </div>
+          <div class="tier-ex-card">
+            <VerificationBadge tier="degree_verified" status="verified" size="sm" />
+            <p class="tier-ex-desc">Degree-only (no registry number yet) → Bronze badge after university confirms</p>
+          </div>
+        </div>
+      </div>
 
- <!-- Hourly Rate -->
- <div>
- <label class="block font-body text-[0.85rem] font-semibold text-ink mb-1">
- Hourly Rate
- <span class="ml-2 font-data font-bold text-primary text-[1rem]">${{ form.hourly_rate_usd }}/hr</span>
- </label>
- <input
- v-model.number="form.hourly_rate_usd"
- type="range"
- min="20" max="300" step="5"
- class="w-full accent-primary"
- />
- <div class="flex justify-between font-data text-[0.72rem] text-ink-muted mt-1">
- <span>$20/hr (min)</span>
- <span class="text-ink-muted">You earn 80% = ${{ Math.round(form.hourly_rate_usd * 0.8) }}/hr</span>
- <span>$300/hr</span>
- </div>
- </div>
+      <div class="form-grid">
+        <!-- NCAHP -->
+        <div class="form-field form-field--full">
+          <label class="form-label">
+            NCAHP Registration Number
+            <a href="https://ncahp.abdm.gov.in" target="_blank" rel="noopener" class="form-ext-link">Check Register ↗</a>
+          </label>
+          <input v-model="form.ncahpRegNumber" class="form-input" placeholder="NCAHP-2024-XX-000000  (leave blank if not yet registered)" />
+          <span class="form-hint-block">Under NCAHP Act 2021. Not registered yet? Leave blank — IDA or degree verification applies.</span>
+        </div>
 
- <!-- Specialties -->
- <div>
- <label class="block font-body text-[0.85rem] font-semibold text-ink mb-2">Specialties</label>
- <div class="flex flex-wrap gap-2">
- <button
- v-for="s in SPECIALTY_OPTIONS"
- :key="s"
- type="button"
- class="px-3 py-1 rounded-full font-body text-[0.8rem] border transition"
- :class="form.specialties.includes(s)
- ? 'bg-primary text-white border-primary'
- : 'bg-canvas border-border text-ink-muted hover:border-primary/60'"
- @click="toggleSpecialty(s)"
- >
- {{ s }}
- </button>
- </div>
- <div class="flex gap-2 mt-3">
- <input
- v-model="form.newSpecialty"
- placeholder="Add custom specialty..."
- class="flex-1 font-body text-[0.88rem] text-ink bg-canvas border border-border rounded-lg px-3 py-1.5 outline-none focus:border-primary text-sm"
- @keyup.enter="addCustomSpecialty"
- />
- <button type="button" class="px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-body hover:bg-primary-dark transition" @click="addCustomSpecialty">Add</button>
- </div>
- </div>
+        <!-- IDA -->
+        <div class="form-field form-field--full">
+          <label class="form-label">IDA Membership Number (Registered Dietitian)</label>
+          <input v-model="form.idaMembershipNumber" class="form-input" placeholder="IDA-YYYY-ST-NNNNN  (optional)" />
+        </div>
 
- <!-- Certifications -->
- <div>
- <label class="block font-body text-[0.85rem] font-semibold text-ink mb-2">Certifications</label>
- <div class="flex flex-wrap gap-2 mb-2">
- <span
- v-for="c in form.certifications"
- :key="c"
- class="flex items-center gap-1 px-3 py-1 rounded-full bg-success/10 text-success border border-success/20 text-[0.8rem] font-body"
- >
- {{ c }}
- <button type="button" class="text-success/60 hover:text-danger ml-1" @click="removeCertification(c)">×</button>
- </span>
- </div>
- <div class="flex gap-2">
- <input
- v-model="form.newCertification"
- placeholder="e.g. Registered Dietitian (RD)"
- class="flex-1 font-body text-[0.88rem] text-ink bg-canvas border border-border rounded-lg px-3 py-1.5 outline-none focus:border-primary text-sm"
- @keyup.enter="addCertification"
- />
- <button type="button" class="px-3 py-1.5 bg-canvas-raised border border-border text-ink-muted rounded-lg text-sm font-body hover:border-primary transition" @click="addCertification">Add</button>
- </div>
- </div>
+        <!-- Degree -->
+        <div class="form-field">
+          <label class="form-label">Degree Institution *</label>
+          <input v-model="form.degreeInstitution" class="form-input" placeholder="e.g. AIIMS Delhi, St. John's Bangalore" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Year of Graduation *</label>
+          <input v-model="form.degreeYear" class="form-input" placeholder="e.g. 2019" maxlength="4" />
+        </div>
+        <div class="form-field form-field--full">
+          <label class="form-label">DigiLocker Reference (if degree is on DigiLocker)</label>
+          <input v-model="form.degreeDigilockerRef" class="form-input" placeholder="DL-XXXXXXXX  (optional, speeds verification)" />
+        </div>
 
- <Button
- class="w-full"
- variant="primary"
- :disabled="!isStep1Valid || isSubmitting"
- @click="submitOnboarding"
- >
- <span v-if="isSubmitting">Creating your profile...</span>
- <span v-else>Continue to Payout Setup →</span>
- </Button>
+        <!-- Sample cases -->
+        <div class="form-field form-field--full">
+          <label class="form-label">Sample Clinical Cases (optional but recommended)</label>
+          <textarea v-model="form.sampleCases" class="form-textarea" rows="3" placeholder="Describe 1–2 anonymized patient outcomes that demonstrate your clinical impact…" />
+        </div>
+      </div>
 
- <!-- Earnings info -->
- <div class="flex items-start gap-3 bg-primary/5 border border-primary/15 rounded-xl p-4">
- <svg class="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
- <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
- </svg>
- <p class="font-body text-[0.82rem] text-ink-muted">
- NutriPlan takes a <strong class="text-ink">20% platform fee</strong> per booking. Payouts are processed via
- <strong class="text-ink">Stripe Connect</strong> and typically arrive in your bank within 2 business days.
- </p>
- </div>
- </div>
+      <!-- Doc upload notice -->
+      <div class="doc-notice">
+        <span class="doc-notice-icon">📎</span>
+        <div>
+          <div class="doc-notice-title">Document Upload</div>
+          <div class="doc-notice-sub">After submitting, you'll receive an email with a secure link to upload your degree certificate, NCAHP/IDA registration certificate, and a masked government ID. All documents are reviewed by our ops team within 2–5 business days.</div>
+        </div>
+      </div>
 
- <!-- Step 2: Success (fallback when Stripe not available locally) -->
- <div v-else class="text-center py-16 bg-canvas-raised border border-border rounded-2xl shadow-sm px-8">
- <div class="w-16 h-16 bg-success/20 text-success rounded-full flex items-center justify-center mx-auto mb-5">
- <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
- <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
- </svg>
- </div>
- <h2 class="font-display font-bold text-[1.8rem] text-ink mb-2">Profile Created!</h2>
- <p class="font-body text-ink-muted text-[1rem] max-w-sm mx-auto mb-6">
- Your marketplace profile is live. Complete your Stripe payout setup to start receiving payments.
- </p>
- <div class="flex flex-col gap-3 items-center">
- <Button variant="primary" @click="router.push('/expert/dashboard')">Go to Expert Dashboard</Button>
- <Button variant="outline" @click="router.push('/appointments/book')">Browse Marketplace</Button>
- </div>
- </div>
+      <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
- </div>
- </div>
+      <div class="step-footer">
+        <Button variant="outline" @click="step = 1">← Back</Button>
+        <Button :disabled="!isStep2Valid || isSubmitting" @click="submit">
+          {{ isSubmitting ? 'Submitting…' : 'Submit Application →' }}
+        </Button>
+      </div>
+    </div>
+
+    <!-- ── STEP 3: Submitted / Status Tracker ──────────────────────────── -->
+    <div v-else-if="step === 3" class="step-card step-card--success">
+      <div class="success-hero">
+        <div class="success-icon">🎉</div>
+        <h2 class="step-title">Application Submitted!</h2>
+        <p class="step-sub">
+          Thank you, <strong>{{ form.name }}</strong>. Our verification team will review your credentials
+          and issue your badge within 2–5 business days.
+        </p>
+        <VerificationBadge tier="pending" status="pending_review" size="lg" />
+      </div>
+
+      <!-- Timeline -->
+      <div class="status-timeline">
+        <div class="timeline-title">Your Verification Journey</div>
+        <div class="timeline-steps">
+          <div
+            v-for="(ts, idx) in timeline"
+            :key="ts.id"
+            class="timeline-step"
+            :class="{
+              'timeline-step--done': idx === 0,
+              'timeline-step--active': idx === 1,
+            }"
+          >
+            <div class="ts-dot-wrap">
+              <div class="ts-dot">{{ idx === 0 ? '✓' : ts.icon }}</div>
+              <div v-if="idx < timeline.length - 1" class="ts-connector" />
+            </div>
+            <div class="ts-body">
+              <div class="ts-label">{{ ts.label }}</div>
+              <div class="ts-desc">{{ ts.desc }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- What to expect -->
+      <div class="expect-card">
+        <div class="expect-title">📬 What happens next?</div>
+        <ul class="expect-list">
+          <li>You'll receive an email with a <strong>secure document upload link</strong> within 30 minutes.</li>
+          <li>Our ops team will cross-check your
+            <strong>NCAHP registration</strong>{{ form.ncahpRegNumber ? ` (${form.ncahpRegNumber})` : '' }}
+            {{ form.idaMembershipNumber ? ` and IDA membership (${form.idaMembershipNumber})` : '' }} against official directories.</li>
+          <li>If we need clarification, you'll get an email with specific questions — no mystery requests.</li>
+          <li>Once verified, your <strong>badge appears instantly</strong> on your public profile and in search results.</li>
+        </ul>
+      </div>
+
+      <div class="step-footer step-footer--center">
+        <Button variant="outline" @click="router.push('/expert/dashboard')">Go to Expert Dashboard</Button>
+        <Button @click="router.push('/dashboard')">Back to App →</Button>
+      </div>
+    </div>
+
+  </div>
 </template>
+
+<style scoped>
+.expert-onboard {
+  max-width: 720px; margin: 0 auto;
+  padding: 32px 20px;
+  display: flex; flex-direction: column; gap: 24px;
+}
+
+/* Progress */
+.progress-wrap { display: flex; flex-direction: column; gap: 12px; }
+.progress-steps { display: flex; justify-content: space-between; }
+.progress-step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+.ps-circle {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+  background: var(--color-canvas-raised, #1e293b);
+  border: 2px solid var(--color-border, rgba(255,255,255,0.1));
+  color: var(--color-ink-muted, #94a3b8);
+  transition: all 0.2s;
+}
+.progress-step--active .ps-circle { border-color: #4F46E5; background: rgba(99,102,241,0.2); color: #818CF8; }
+.progress-step--done  .ps-circle { border-color: #10B981; background: rgba(16,185,129,0.2); color: #10B981; }
+.ps-label { font-size: 0.72rem; color: var(--color-ink-muted, #94a3b8); text-align: center; }
+.progress-step--active .ps-label { color: #818CF8; font-weight: 600; }
+.progress-step--done  .ps-label  { color: #10B981; }
+
+.progress-bar { height: 4px; background: var(--color-border, rgba(255,255,255,0.08)); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #4F46E5, #7C3AED); border-radius: 2px; transition: width 0.4s ease; }
+
+/* Step card */
+.step-card {
+  background: var(--color-canvas-raised, #1e293b);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: 20px; padding: 28px 28px 24px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.step-card--success { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.04); }
+
+.step-header { display: flex; gap: 16px; align-items: flex-start; }
+.step-emoji { font-size: 40px; }
+.step-title { font-size: 1.4rem; font-weight: 800; color: var(--color-ink, #f1f5f9); }
+.step-sub { font-size: 0.875rem; color: var(--color-ink-muted, #94a3b8); margin-top: 4px; line-height: 1.5; }
+
+/* Forms */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-field { display: flex; flex-direction: column; gap: 5px; }
+.form-field--full { grid-column: 1 / -1; }
+.form-label { font-size: 0.78rem; font-weight: 600; color: var(--color-ink-muted, #94a3b8); display: flex; align-items: center; gap: 8px; }
+.form-hint { font-weight: 400; font-size: 0.7rem; }
+.form-ext-link { font-size: 0.7rem; color: #818CF8; text-decoration: none; }
+.form-ext-link:hover { text-decoration: underline; }
+.form-input {
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--color-canvas, #0f172a);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  color: var(--color-ink, #f1f5f9); font-size: 0.9rem; outline: none; transition: border-color 0.15s;
+}
+.form-input:focus { border-color: rgba(99,102,241,0.6); }
+.form-input::placeholder { color: rgba(148,163,184,0.5); }
+.form-textarea { @extend .form-input; resize: vertical; }
+.form-textarea {
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--color-canvas, #0f172a);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  color: var(--color-ink, #f1f5f9); font-size: 0.9rem; outline: none; transition: border-color 0.15s; resize: vertical;
+}
+.form-textarea:focus { border-color: rgba(99,102,241,0.6); }
+.form-hint-block { font-size: 0.68rem; color: rgba(148,163,184,0.6); }
+
+.form-section { display: flex; flex-direction: column; gap: 10px; }
+
+/* Specialties */
+.specialty-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.spec-btn {
+  padding: 5px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+  cursor: pointer; border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  background: var(--color-canvas, #0f172a); color: var(--color-ink-muted, #94a3b8);
+  transition: all 0.15s;
+}
+.spec-btn:hover { border-color: rgba(99,102,241,0.4); color: #818CF8; }
+.spec-btn--on { background: rgba(99,102,241,0.15); border-color: #4F46E5; color: #818CF8; font-weight: 700; }
+
+.custom-spec-row { display: flex; gap: 8px; align-items: center; }
+.selected-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.selected-chip {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 10px 3px 10px; border-radius: 20px;
+  background: rgba(99,102,241,0.15); color: #818CF8;
+  font-size: 0.78rem; font-weight: 600; border: 1px solid rgba(99,102,241,0.3);
+}
+.chip-remove { background: none; border: none; color: #818CF8; cursor: pointer; font-size: 14px; padding: 0 0 0 2px; }
+
+/* Tier explainer */
+.tier-explainer {
+  background: var(--color-canvas, #0f172a);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: 14px; padding: 16px 18px;
+}
+.tier-ex-title { font-size: 0.78rem; font-weight: 700; color: var(--color-ink-muted, #94a3b8); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+.tier-ex-cards { display: flex; gap: 12px; flex-wrap: wrap; }
+.tier-ex-card { display: flex; flex-direction: column; gap: 7px; flex: 1; min-width: 150px; }
+.tier-ex-desc { font-size: 0.72rem; color: rgba(148,163,184,0.7); line-height: 1.4; }
+
+/* Doc notice */
+.doc-notice {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px; border-radius: 12px;
+  background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2);
+}
+.doc-notice-icon { font-size: 20px; }
+.doc-notice-title { font-size: 0.85rem; font-weight: 700; color: #FBBF24; }
+.doc-notice-sub { font-size: 0.75rem; color: rgba(148,163,184,0.8); margin-top: 3px; line-height: 1.5; }
+
+.error-msg { padding: 10px 14px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 10px; color: #F87171; font-size: 0.85rem; }
+
+.step-footer { display: flex; gap: 12px; justify-content: flex-end; }
+.step-footer--center { justify-content: center; }
+
+/* Success step */
+.success-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.success-icon { font-size: 52px; }
+
+/* Timeline */
+.status-timeline {
+  background: var(--color-canvas, #0f172a);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: 14px; padding: 18px 20px;
+}
+.timeline-title { font-size: 0.78rem; font-weight: 700; color: var(--color-ink-muted, #94a3b8); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; }
+.timeline-steps { display: flex; flex-direction: column; gap: 0; }
+.timeline-step { display: flex; gap: 16px; }
+.ts-dot-wrap { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.ts-dot {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; z-index: 1;
+  background: var(--color-canvas-raised, #1e293b);
+  border: 2px solid var(--color-border, rgba(255,255,255,0.1));
+  color: var(--color-ink-muted, #94a3b8);
+}
+.timeline-step--done  .ts-dot { background: rgba(16,185,129,0.2); border-color: #10B981; color: #10B981; }
+.timeline-step--active .ts-dot { background: rgba(251,191,36,0.15); border-color: #FBBF24; color: #FBBF24; animation: badge-pulse 2s ease-in-out infinite; }
+@keyframes badge-pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+.ts-connector { flex: 1; width: 2px; background: var(--color-border, rgba(255,255,255,0.08)); margin: 4px 0; min-height: 24px; }
+
+.ts-body { padding: 6px 0 18px; }
+.ts-label { font-size: 0.9rem; font-weight: 700; color: var(--color-ink, #f1f5f9); }
+.timeline-step--done  .ts-label { color: #10B981; }
+.timeline-step--active .ts-label { color: #FBBF24; }
+.ts-desc { font-size: 0.75rem; color: var(--color-ink-muted, #94a3b8); margin-top: 2px; line-height: 1.4; }
+
+/* Expect card */
+.expect-card {
+  padding: 16px 18px; border-radius: 12px;
+  background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.2);
+}
+.expect-title { font-size: 0.9rem; font-weight: 700; color: #818CF8; margin-bottom: 10px; }
+.expect-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; }
+.expect-list li { font-size: 0.82rem; color: var(--color-ink-muted, #94a3b8); line-height: 1.5; }
+.expect-list strong { color: var(--color-ink, #f1f5f9); }
+</style>

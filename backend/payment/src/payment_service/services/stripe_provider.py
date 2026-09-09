@@ -58,7 +58,8 @@ class StripeProvider:
         """
         Generates the hosted onboarding URL where the nutritionist enters bank details.
         """
-        base = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        from nutriplan_shared.service_registry import FRONTEND_URL as _REG_FRONTEND_URL
+        base = os.getenv("FRONTEND_URL", _REG_FRONTEND_URL)
         link = stripe.AccountLink.create(
             account=account_id,
             refresh_url=refresh_url or f"{base}/expert/onboard?refresh=1",
@@ -132,6 +133,50 @@ class StripeProvider:
             "client_secret": intent.client_secret,
             "setup_intent_id": intent.id,
             "status": intent.status
+        }
+
+    def create_checkout_session(
+        self,
+        tier: str,
+        user_id: Optional[str] = None,
+        success_url: Optional[str] = None,
+        cancel_url: Optional[str] = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        """
+        Creates an official hosted Stripe Checkout Session for recurring subscriptions or one-time trials.
+        Returns the hosted checkout URL where user securely enters their credit card or UPI details on Stripe.
+        """
+        unit_amount = 49900 if tier.lower() == "pro" else (89900 if tier.lower() == "family" else 0)
+        plan_name = "NutriPlan Pro Clinical AI" if tier.lower() == "pro" else ("NutriPlan Family Care" if tier.lower() == "family" else "NutriPlan Basic")
+
+        meta = {"tier": tier, "user_id": user_id or "usr_mobile_patient", **(metadata or {})}
+
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "inr",
+                        "product_data": {
+                            "name": plan_name,
+                            "description": f"{plan_name} membership with AI clinical guardrails & grocery sync",
+                        },
+                        "unit_amount": unit_amount,
+                    },
+                    "quantity": 1,
+                }
+            ],
+            mode="payment",
+            success_url=success_url or "https://nutriplan.app/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=cancel_url or "https://nutriplan.app/checkout/cancel",
+            metadata=meta,
+        )
+
+        return {
+            "session_id": session.id,
+            "checkout_url": session.url,
+            "status": session.status,
         }
 
     def create_transfer(

@@ -4,8 +4,11 @@ Chat Service Routes — Real-Time Clinical Messaging
 Endpoints:
   GET  /api/v1/chat/clinical/thread/{room_id}/messages  — Load message history
   POST /api/v1/chat/clinical/send                       — Send a message (REST fallback)
+  POST /api/v1/chat/clinical/intake/initiate            — Patient registers a consultation request
   POST /api/v1/chat/clinical/intake/accept              — Expert accepts patient intake
-  GET  /api/v1/chat/clinical/threads/{email}            — List all threads for a user
+  POST /api/v1/chat/clinical/intake/decline             — Expert declines patient intake
+  GET  /api/v1/chat/clinical/threads/{email}            — List all threads for expert email
+  GET  /api/v1/chat/clinical/thread/{room_id}/status    — Get thread status
   WS   /api/v1/chat/ws/clinical/{room_id}/{sender_email} — Real-time WebSocket room
 """
 import json
@@ -16,12 +19,14 @@ import uuid
 
 from ..schemas.chat_schemas import (
     SendMessageRequest, MessageResponse, ConversationResponse,
-    SendClinicalMessageRequest, AcceptIntakeRequest, ThreadSummaryResponse
+    SendClinicalMessageRequest, AcceptIntakeRequest, ThreadSummaryResponse,
+    InitiateIntakeRequest,
 )
 from ..services.chat_service import (
     send_message, get_history, list_conversations,
     manager, get_canonical_room_id, save_clinical_message,
     get_room_messages, set_thread_status, get_thread_status,
+    set_thread_metadata, get_thread_metadata, get_threads_for_expert,
     _THREAD_STATUSES, _ROOM_MESSAGES,
 )
 from nutriplan_shared.auth import get_current_user, user_uuid
@@ -62,24 +67,58 @@ async def get_clinical_messages(room_id: str):
 
 @router.get(
     "/clinical/threads/{email}",
-    summary="List all clinical threads for a user email",
+    summary="List all clinical threads for an expert email",
 )
 async def get_clinical_threads(email: str):
-    """Returns all threads where this email is a participant."""
-    email_lower = email.strip().lower()
-    threads = []
-    for room_id, status in _THREAD_STATUSES.items():
-        if email_lower in room_id:
-            messages = _ROOM_MESSAGES.get(room_id, [])
-            last_msg = messages[-1] if messages else {}
-            threads.append({
-                "room_id": room_id,
-                "status": status,
-                "last_message": last_msg.get("text", "No messages yet"),
-                "last_time": last_msg.get("time", ""),
-                "unread_count": 0,
-            })
-    return threads
+    """
+    Returns all threads where this expert email is a participant.
+    Used by the expert frontend to populate the thread list dynamically.
+    """
+    return get_threads_for_expert(email)
+
+
+@router.post("/clinical/intake/initiate", summary="Patient registers a consultation request")
+async def initiate_intake(req: InitiateIntakeRequest):
+    """
+    Called by the mobile app when the patient wants to start a clinical consultation.
+    Creates a 'pending' thread with patient metadata so the expert can see it in
+    their Requests tab and choose to accept or decline.
+    """
+    room_id = get_canonical_room_id(req.patient_email, req.expert_email)
+
+    # Only initialise if not already active/declined — don't downgrade
+    current_status = get_thread_status(room_id)
+    if current_status not in ("active", "declined"):
+        set_thread_status(room_id, "pending")
+
+    # Always update/store metadata (patient name, intake summary)
+    set_thread_metadata(
+        room_id=room_id,
+        patient_email=req.patient_email,
+        expert_email=req.expert_email,
+        patient_name=req.patient_name,
+        intake_summary=req.intake_summary,
+    )
+
+    # Notify any connected expert WebSocket sessions in real-time
+    await manager.broadcast_to_room(room_id, {
+        "type": "new_intake_request",
+        "payload": {
+            "room_id": room_id,
+            "patient_email": req.patient_email,
+            "patient_name": req.patient_name or req.patient_email.split("@")[0].title(),
+            "intake_summary": req.intake_summary,
+            "status": "pending",
+        }
+    })
+
+    logger.info(f"[Intake] New request from {req.patient_email} → {req.expert_email} (room: {room_id})")
+
+    return {
+        "ok": True,
+        "room_id": room_id,
+        "status": get_thread_status(room_id),
+    }
 
 
 @router.post("/clinical/send", summary="Send clinical message (REST fallback)")
@@ -179,6 +218,7 @@ async def clinical_chat_ws(websocket: WebSocket, room_id: str, sender_email: str
                   { "type": "thread_status", "status": "active"|"pending"|"declined" }
                   { "type": "pong" }
                   { "type": "history", "messages": [...] }
+                  { "type": "new_intake_request", "payload": { ...metadata } }  ← expert only
     """
     await manager.connect(websocket, sender_email, room_id)
     logger.info(f"[Clinical WS] {sender_email} joined room {room_id}")

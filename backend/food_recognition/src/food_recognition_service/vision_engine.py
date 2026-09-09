@@ -7,6 +7,7 @@ Supports:
 - Visual portion estimation and automated FSSAI/ICMR compliance flags
 """
 import base64
+import os
 import uuid
 import httpx
 import json
@@ -18,8 +19,10 @@ except Exception:
 
 from .extended_food_db import EXTENDED_FOOD_DB
 
-OLLAMA_URL = "http://localhost:11434"
-VISION_MODEL = "llava"
+# URLs sourced from environment — set in root .env (APP_SCHEME + APP_DOMAIN + APP_PORT_OLLAMA)
+# Override OLLAMA_URL here for remote Ollama instances without touching source code.
+OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
+VISION_MODEL: str = os.getenv("VISION_MODEL", "llava")
 
 # Combined database including home and outside restaurant/cafe items
 FOOD_DB: Dict[str, FoodItem] = {**EXTENDED_FOOD_DB}

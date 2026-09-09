@@ -1,4 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
+from typing import Any, List
 
 class AuthSettings(BaseSettings):
     SERVICE_NAME: str = "auth-service"
@@ -22,7 +24,20 @@ class AuthSettings(BaseSettings):
     USE_KEYCLOAK: bool = False  # False = standalone JWT mode for local dev
 
     # CORS
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    ALLOWED_ORIGINS: Any = ["http://localhost:5173", "http://localhost:3000"]
+
+    @model_validator(mode="after")
+    def parse_allowed_origins(self) -> "AuthSettings":
+        val = self.ALLOWED_ORIGINS
+        if isinstance(val, str):
+            self.ALLOWED_ORIGINS = [o.strip() for o in val.split(",") if o.strip()]
+        return self
+
+    @property
+    def allowed_origins_list(self) -> List[str]:
+        if isinstance(self.ALLOWED_ORIGINS, list):
+            return self.ALLOWED_ORIGINS
+        return [o.strip() for o in str(self.ALLOWED_ORIGINS).split(",") if o.strip()]
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -9,6 +9,10 @@ class MealItem {
   final int fat;
   final bool isLogged;
 
+  final List<String> ingredients;
+  final List<String> instructions;
+  final String? loggedEntryId;
+
   const MealItem({
     required this.id,
     required this.title,
@@ -19,9 +23,63 @@ class MealItem {
     required this.carbs,
     required this.fat,
     this.isLogged = false,
+    this.ingredients = const [],
+    this.instructions = const [],
+    this.loggedEntryId,
   });
 
+  MealItem copyWith({
+    String? id,
+    String? title,
+    String? mealType,
+    String? imageUrl,
+    int? calories,
+    int? protein,
+    int? carbs,
+    int? fat,
+    bool? isLogged,
+    List<String>? ingredients,
+    List<String>? instructions,
+    String? loggedEntryId,
+  }) {
+    return MealItem(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      mealType: mealType ?? this.mealType,
+      imageUrl: imageUrl ?? this.imageUrl,
+      calories: calories ?? this.calories,
+      protein: protein ?? this.protein,
+      carbs: carbs ?? this.carbs,
+      fat: fat ?? this.fat,
+      isLogged: isLogged ?? this.isLogged,
+      ingredients: ingredients ?? this.ingredients,
+      instructions: instructions ?? this.instructions,
+      loggedEntryId: loggedEntryId ?? this.loggedEntryId,
+    );
+  }
+
   factory MealItem.fromJson(Map<String, dynamic> json) {
+    List<String> parsedIngredients = [];
+    if (json['ingredients'] is List) {
+      for (var ing in json['ingredients']) {
+        if (ing is String) {
+          parsedIngredients.add(ing);
+        } else if (ing is Map) {
+          final name = ing['name'] ?? '';
+          final qty = ing['quantity'] ?? ing['amount'] ?? '';
+          final unit = ing['unit'] ?? '';
+          parsedIngredients.add('$qty $unit $name'.trim());
+        }
+      }
+    }
+
+    List<String> parsedInstructions = [];
+    if (json['instructions'] is List) {
+      parsedInstructions = (json['instructions'] as List)
+          .map((i) => i.toString())
+          .toList();
+    }
+
     return MealItem(
       id: json['id']?.toString() ?? json['recipe_id']?.toString() ?? '1',
       title: json['name'] ?? json['title'] ?? 'Meal',
@@ -32,6 +90,9 @@ class MealItem {
       carbs: (json['carbs_g'] ?? json['carbs'] ?? 40).toInt(),
       fat: (json['fat_g'] ?? json['fat'] ?? 10).toInt(),
       isLogged: json['is_logged'] ?? false,
+      ingredients: parsedIngredients,
+      instructions: parsedInstructions,
+      loggedEntryId: json['logged_entry_id']?.toString(),
     );
   }
 }

@@ -19,6 +19,7 @@ export function useResilientWebSocket(options: ResilientWebSocketOptions) {
   const isConnected = ref(false)
   const reconnectAttempts = ref(0)
   const lastError = ref<string | null>(null)
+  const offlineQueueCount = ref(0)
 
   let ws: WebSocket | null = null
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
@@ -129,6 +130,7 @@ export function useResilientWebSocket(options: ResilientWebSocketOptions) {
         ws.send(msg)
       }
     }
+    offlineQueueCount.value = 0
   }
 
   function send(data: string | object): boolean {
@@ -140,6 +142,7 @@ export function useResilientWebSocket(options: ResilientWebSocketOptions) {
     } else {
       // Queue offline message to be sent upon reconnection
       offlineQueue.push(payload)
+      offlineQueueCount.value = offlineQueue.length
       if (status.value === 'disconnected') {
         connect()
       }
@@ -171,6 +174,7 @@ export function useResilientWebSocket(options: ResilientWebSocketOptions) {
     isConnected,
     reconnectAttempts,
     lastError,
+    offlineQueueCount,
     connect,
     disconnect,
     send,

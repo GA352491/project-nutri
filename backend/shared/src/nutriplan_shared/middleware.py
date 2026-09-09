@@ -150,11 +150,14 @@ def apply_security_middleware(app: FastAPI, settings: object) -> "Limiter | None
         raw_origins if isinstance(raw_origins, list)
         else [o.strip() for o in raw_origins.split(",")]
     )
-    # Always allow localhost in non-prod
+    # Always allow FRONTEND_URL and all ALLOWED_ORIGINS in non-prod environments
     if environment not in ("production",):
-        for local in ("http://localhost:5173", "http://localhost:3000"):
-            if local not in allowed_origins:
-                allowed_origins.append(local)
+        import os
+        _frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        _extra_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+        for origin in ([_frontend_url] + _extra_origins):
+            if origin and origin not in allowed_origins:
+                allowed_origins.append(origin)
 
     app.add_middleware(
         CORSMiddleware,

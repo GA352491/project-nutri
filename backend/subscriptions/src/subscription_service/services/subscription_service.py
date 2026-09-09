@@ -1,6 +1,7 @@
 import uuid
 import secrets
 import string
+import os
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import select, func, String
@@ -25,6 +26,9 @@ from ..config import settings
 
 engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+# Frontend base URL for redirect/share links — sourced from root .env
+_FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 async def get_db():
     async with AsyncSessionLocal() as session:
@@ -112,7 +116,7 @@ async def create_checkout_session(user_id: uuid.UUID, req: CheckoutRequest, db: 
         print(f"Temporal Subscription Workflow dispatched note: {e}")
 
     return CheckoutResponse(
-        checkout_url=req.success_url or f"http://localhost:5173/dashboard?subscribed={req.tier}"
+        checkout_url=req.success_url or f"{_FRONTEND_URL}/dashboard?subscribed={req.tier}"
     )
 
 
@@ -179,7 +183,7 @@ async def get_or_create_referral_code(user_id: uuid.UUID, db: AsyncSession) -> R
         
         return ReferralResponse(
             referral_code=primary_code,
-            share_url=f"http://localhost:5173/register?ref={primary_code}",
+            share_url=f"{_FRONTEND_URL}/register?ref={primary_code}",
             reward_days=30,
             total_referrals=total,
             successful_referrals=successful
@@ -187,7 +191,7 @@ async def get_or_create_referral_code(user_id: uuid.UUID, db: AsyncSession) -> R
     except Exception:
         return ReferralResponse(
             referral_code="NUTRI-WELCOME30",
-            share_url="http://localhost:5173/register?ref=NUTRI-WELCOME30",
+            share_url=f"{_FRONTEND_URL}/register?ref=NUTRI-WELCOME30",
             reward_days=30,
             total_referrals=3,
             successful_referrals=1

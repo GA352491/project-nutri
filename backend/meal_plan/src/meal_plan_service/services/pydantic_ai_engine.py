@@ -6,10 +6,13 @@ Pydantic AI forces the LLM to return a strict, validated Pydantic schema,
 so we never get a malformed JSON response from Ollama.
 """
 from __future__ import annotations
+import os
 from typing import List
 from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
+
+_OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 
 # ── Strict output schema for the LLM ─────────────────────────────────────────
@@ -42,9 +45,9 @@ class DailyPlan(BaseModel):
 
 # ── Pydantic AI Agent using local Ollama ─────────────────────────────────────
 
-# Ollama exposes an OpenAI-compatible API at localhost:11434
+# Ollama exposes an OpenAI-compatible API — URL from env (APP_SCHEME + APP_DOMAIN + APP_PORT_OLLAMA)
 try:
-    _ollama_model = OpenAIChatModel("llama3", base_url="http://localhost:11434/v1", api_key="ollama")
+    _ollama_model = OpenAIChatModel("llama3", base_url=f"{_OLLAMA_URL}/v1", api_key="ollama")
     meal_plan_agent = Agent(
         model=_ollama_model,
         result_type=DailyPlan,

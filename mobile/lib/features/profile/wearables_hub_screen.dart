@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../theme/colors.dart';
 import 'services/health_kit_service.dart';
@@ -75,30 +74,54 @@ class _WearablesHubScreenState extends State<WearablesHubScreen> {
 
   Future<void> _toggleDevice(Map<String, dynamic> device) async {
     final willConnect = !(device['connected'] as bool);
-    setState(() {
-      device['connected'] = willConnect;
-      if (willConnect) {
-        device['battery'] = '96%';
-        device['lastSync'] = 'Just now';
-      }
-    });
 
-    if (willConnect) {
-      if (device['id'] == 'apple') {
-        await _healthService.syncHealthTelemetry(
-          userId: 'user_123',
-          steps: 9240,
-          activeEnergyBurned: 480.0,
+    if (willConnect && (device['id'] == 'apple' || device['id'] == 'fitbit')) {
+      // Prompt native OS consent dialog (HealthKit / Health Connect)
+      final granted = await _healthService.requestPermissions();
+      if (!granted) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Health permission not granted. Please allow in device Settings.'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
-      } else if (device['id'] == 'whoop') {
-        await _healthService.syncWhoopTelemetry(
-          userId: 'user_123',
-          strain: 16.2,
-          recoveryScore: 82,
-          activeCalories: 520.0,
-        );
+        return;
       }
+
+      setState(() {
+        _isSyncing = true;
+      });
+
+      // Query real device step count & active calorie burn
+      await _healthService.syncLiveHealthTelemetry(userId: 'user_123');
+      
+      setState(() {
+        _isSyncing = false;
+        device['connected'] = true;
+        device['battery'] = 'Live OS';
+        device['lastSync'] = 'Just now';
+      });
+
       await _loadSummary();
+    } else if (willConnect && device['id'] == 'whoop') {
+      setState(() {
+        device['connected'] = true;
+        device['lastSync'] = 'Just now';
+      });
+      await _healthService.syncWhoopTelemetry(
+        userId: 'user_123',
+        strain: 14.8,
+        recoveryScore: 86,
+        hrvMs: 65,
+        activeCalories: 480.0,
+      );
+      await _loadSummary();
+    } else {
+      setState(() {
+        device['connected'] = willConnect;
+      });
     }
 
     if (!mounted) return;
@@ -117,20 +140,16 @@ class _WearablesHubScreenState extends State<WearablesHubScreen> {
 
   Future<void> _manualSync() async {
     setState(() => _isSyncing = true);
-    
-    // Sync Apple HealthKit / Health Connect
-    final hkRes = await _healthService.syncHealthTelemetry(
-      userId: 'user_123',
-      steps: 10450,
-      activeEnergyBurned: 530.0,
-      heartRateAvg: 68,
-    );
 
-    // Sync Whoop
+    // Sync Apple HealthKit / Health Connect with real native data
+    await _healthService.syncLiveHealthTelemetry(userId: 'user_123');
+
+    // Sync Whoop (values entered by user or fetched from Whoop OAuth in a full impl)
     final whoopRes = await _healthService.syncWhoopTelemetry(
       userId: 'user_123',
       strain: 15.8,
       recoveryScore: 88,
+      hrvMs: 65,
       activeCalories: 512.0,
     );
 
@@ -165,8 +184,8 @@ class _WearablesHubScreenState extends State<WearablesHubScreen> {
         actions: [
           IconButton(
             icon: _isSyncing
-                ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: NutriColors.primary))
-                : Icon(Icons.sync_rounded, color: NutriColors.primary),
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: NutriColors.primary))
+                : const Icon(Icons.sync_rounded, color: NutriColors.primary),
             onPressed: _isSyncing ? null : _manualSync,
           )
         ],
@@ -178,8 +197,8 @@ class _WearablesHubScreenState extends State<WearablesHubScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [NutriColors.primary.withValues(alpha: 0.2), Colors.teal.withValues(alpha: 0.1)],
+              gradient: const LinearGradient(
+                colors: [Color(0x3343A047), Color(0x1A009688)],
               ),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: NutriColors.primary.withValues(alpha: 0.3)),
@@ -193,19 +212,19 @@ class _WearablesHubScreenState extends State<WearablesHubScreen> {
                     color: NutriColors.primary.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.auto_awesome_rounded, color: NutriColors.primary, size: 24),
+                  child: const Icon(Icons.auto_awesome_rounded, color: NutriColors.primary, size: 24),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      const Row(
                         children: [
-                          const Text('Live Biometric Adaptation', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          const SizedBox(width: 6),
+                          Text('Live Biometric Adaptation', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          SizedBox(width: 6),
                           Chip(
-                            label: const Text('LIVE SYNC', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                            label: Text('LIVE SYNC', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
                             backgroundColor: NutriColors.primary,
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
@@ -470,8 +489,6 @@ class _WearablesHubScreenState extends State<WearablesHubScreen> {
       ],
     );
   }
-
-  Widget _buildStatPill
 
   Widget _buildStatPill(String label) {
     return Container(

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NutriPlan Network Security Config
+  Permits plain HTTP to the local dev backend (localhost and the Android emulator
+  alias 10.0.2.2). For production, remove these entries and enforce HTTPS.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Local machine when running on a physical device via USB debugging -->
+        <domain includeSubdomains="false">localhost</domain>
+        <!-- Android emulator's host alias for the dev machine -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- Local machine IP on Wi-Fi for physical phones -->
+        <domain includeSubdomains="true">192.168.0.101</domain>
+        <domain includeSubdomains="true">192.168.1.1</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>
