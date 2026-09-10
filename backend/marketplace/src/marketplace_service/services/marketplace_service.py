@@ -125,7 +125,9 @@ async def seed_initial_nutritionists_if_empty():
 async def list_nutritionists(specialty: Optional[str] = None, max_rate: Optional[float] = None) -> List:
     try:
         await seed_initial_nutritionists_if_empty()
-        query = {}
+        query: dict = {
+            "is_invite_claimed": {"$ne": False}
+        }
         if specialty:
             query["specialties"] = {"$regex": specialty, "$options": "i"}
         if max_rate:
@@ -133,7 +135,13 @@ async def list_nutritionists(specialty: Optional[str] = None, max_rate: Optional
         return await Nutritionist.find(query).to_list()
     except Exception as e:
         print(f"[Marketplace] Mongo query failed: {e}")
-        return []
+        # In-memory fallback
+        results = [n for n in _SEED_NUTRITIONISTS if getattr(n, "is_invite_claimed", True) is not False]
+        if specialty:
+            results = [n for n in results if any(specialty.lower() in s.lower() for s in getattr(n, "specialties", []))]
+        if max_rate:
+            results = [n for n in results if getattr(n, "hourly_rate_usd", 0) <= max_rate]
+        return results
 
 async def create_nutritionist_profile(data: dict):
     try:

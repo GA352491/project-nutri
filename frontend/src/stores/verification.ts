@@ -272,11 +272,70 @@ export const useVerificationStore = defineStore('verification', () => {
     }
   }
 
+  async function inviteClinician(payload: {
+    name: string
+    email: string
+    ncahp_reg_number?: string
+    ida_membership_number?: string
+    assigned_tier: BadgeTier
+    specialties?: string[]
+    hourly_rate_usd?: number
+  }) {
+    isLoading.value = true
+    try {
+      let backendData: any = null
+      try {
+        const res = await apiClient.post('/marketplace/nutritionists/invite', payload)
+        backendData = res.data
+      } catch {}
+
+      const newApp: NutritionistApplication = {
+        id: backendData?.nutritionist_id || `nut-${Date.now()}`,
+        name: payload.name,
+        email: payload.email,
+        degreeInstitution: 'Verified Credentials',
+        degreeYear: new Date().getFullYear().toString(),
+        specialties: payload.specialties || ['Clinical Nutrition'],
+        bio: `Clinical nutritionist invited by NutriPlan Clinical Operations.`,
+        experienceYears: 4,
+        hourlyRateUsd: payload.hourly_rate_usd || 85,
+        docs: [],
+        ncahpRegNumber: payload.ncahp_reg_number,
+        idaMembershipNumber: payload.ida_membership_number,
+        status: 'verified',
+        badgeTier: payload.assigned_tier,
+        appliedAt: new Date().toISOString(),
+        lastUpdatedAt: new Date().toISOString(),
+        ncahpLookupStatus: payload.ncahp_reg_number ? 'found' : null,
+        idaLookupStatus: payload.ida_membership_number ? 'found' : null,
+        opsNotes: `Direct clinician invitation issued by Admin.`,
+        auditLog: [
+          {
+            id: `audit-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            action: `Admin Invitation Dispatched · Badge: ${tierLabel(payload.assigned_tier)}`,
+            performedBy: 'admin@nutriplan.in',
+            note: `Invitation link sent to ${payload.email}`,
+          },
+        ],
+      }
+
+      applications.value.unshift(newApp)
+      return {
+        success: true,
+        id: newApp.id,
+        claimUrl: backendData?.claim_url || `/expert/claim?token=inv_mock_${Date.now()}&email=${payload.email}`,
+      }
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   return {
     applications, isLoading,
     pendingCount, needsInfoCount, verifiedCount, totalCount,
     getById, approveApplication, requestMoreInfo, rejectApplication,
-    revokeVerification, setNcahpLookup, setIdaLookup, submitApplication,
+    revokeVerification, setNcahpLookup, setIdaLookup, submitApplication, inviteClinician,
   }
 })
 

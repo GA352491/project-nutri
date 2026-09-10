@@ -8,7 +8,7 @@ class SubscriptionSettings(BaseSettings):
     DEBUG: bool = True
 
     # PostgreSQL — stores subscription states
-    DATABASE_URL: str = "postgresql+asyncpg://nutriplan:nutriplan@localhost:5432/nutriplan_subscriptions"
+    DATABASE_URL: str = "postgresql+asyncpg://nutriplan:nutriplan@localhost:5432/nutriplan"
 
     # CORS
     ALLOWED_ORIGINS: Any = ["http://localhost:5173", "http://localhost:3000"]

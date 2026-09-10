@@ -34,7 +34,7 @@ if [[ "${1:-}" == "--stop" ]]; then
     done < "$PID_FILE"
     rm -f "$PID_FILE"
   fi
-  for port in 7233 8233 8001 8002 8003 8004 8005 8006 8007 8009 8010 8011 8012 8013 8014 8015 8016 8017 8018 8019 8020 8025 5173; do
+  for port in 7233 8233 4000 8001 8002 8003 8004 8005 8006 8007 8009 8010 8011 8012 8013 8014 8015 8016 8017 8018 8019 8020 8025 5173; do
     pid=$(lsof -ti:"$port" 2>/dev/null || true)
     [[ -n "$pid" ]] && kill $pid 2>/dev/null && ok "Released port $port" || true
   done
@@ -71,6 +71,10 @@ if [[ "${1:-}" == "--status" ]]; then
   check_port "Analytics Service"     8019
   check_port "Admin Service"         8020
   check_port "Marketplace Service"   8025
+  code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 "http://localhost:11434/" 2>/dev/null || echo "DOWN")
+  if [[ "$code" == "200" ]]; then ok "Ollama LLM Engine     — :11434"; else err "Ollama LLM Engine     — :11434 (HTTP $code)"; fi
+  code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 "http://localhost:4000/health/liveliness" 2>/dev/null || echo "DOWN")
+  if [[ "$code" == "200" || "$code" == "307" ]]; then ok "LiteLLM Proxy & UI    — :4000"; else err "LiteLLM Proxy & UI    — :4000 (HTTP $code)"; fi
   code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 "http://localhost:8233" 2>/dev/null || echo "DOWN")
   if [[ "$code" == "200" ]]; then ok "Temporal Web UI      — :8233"; else err "Temporal Web UI      — :8233"; fi
   exit 0
@@ -141,8 +145,26 @@ start_uvicorn "Admin Service"           8020  "$BACKEND/admin"           "src.ad
 start_uvicorn "Marketplace Service"     8025  "$BACKEND/marketplace"     "src.marketplace_service.main:app"
 ok "All 20 microservices starting..."
 
-# 3. Temporal Hub
-hdr "3/4 — Temporal Master Worker Hub"
+# 3. LiteLLM Proxy Gateway & Admin UI
+hdr "3/5 — LiteLLM Gateway & Dashboard (localhost:4000)"
+existing_litellm=$(lsof -ti:4000 2>/dev/null || true)
+if [[ -n "$existing_litellm" ]]; then
+  warn "LiteLLM Proxy already running on :4000 — skipping"
+else
+  (
+    DATABASE_URL="postgresql://nutriplan:nutriplan@localhost:5432/litellm_db" \
+    LITELLM_MASTER_KEY="sk-nutriplan-litellm-proxy-admin" \
+    UI_USERNAME="admin" \
+    UI_PASSWORD="password123" \
+    "$ROOT/.venv/bin/litellm" --config "$ROOT/litellm_config.yaml" --port 4000
+  ) > "$LOG_DIR/litellm_proxy.log" 2>&1 &
+  echo "litellm_proxy=$!" >> "$PID_FILE"
+  sleep 3
+  ok "LiteLLM Proxy & UI started → http://localhost:4000/ui (admin / password123)"
+fi
+
+# 4. Temporal Hub
+hdr "4/5 — Temporal Master Worker Hub"
 sleep 2
 (
   PYTHONPATH="$SHARED_PATH:$BACKEND/appointment/src:$BACKEND/meal_plan/src:$BACKEND/subscriptions/src:$BACKEND/notifications/src:$BACKEND/delivery/src:$BACKEND/payment/src" \
@@ -151,8 +173,8 @@ sleep 2
 echo "temporal_hub=$!" >> "$PID_FILE"
 ok "Temporal Hub started — 5 workflow queues active"
 
-# 4. Frontend
-hdr "4/4 — Frontend Dev Server (localhost:5173)"
+# 5. Frontend
+hdr "5/5 — Frontend Dev Server (localhost:5173)"
 existing_fe=$(lsof -ti:5173 2>/dev/null || true)
 if [[ -n "$existing_fe" ]]; then
   warn "Frontend already running on :5173 — skipping"
@@ -171,6 +193,7 @@ echo -e "${GREEN}   NutriPlan Ecosystem READY 🚀                     ${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "   🌐  Frontend App       →  ${GREEN}http://localhost:5173${NC}"
+echo -e "   🤖  LiteLLM Dashboard  →  ${GREEN}http://localhost:4000/ui${NC}"
 echo -e "   ⚡  Temporal Web UI    →  ${GREEN}http://localhost:8233/namespaces/default/workflows${NC}"
 echo -e "   📋  Meal Plan API Docs →  ${GREEN}http://localhost:8009/docs${NC}"
 echo -e "   📋  Auth API Docs      →  ${GREEN}http://localhost:8001/docs${NC}"

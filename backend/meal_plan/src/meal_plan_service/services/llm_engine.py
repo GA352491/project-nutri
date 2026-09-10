@@ -1,14 +1,17 @@
 import json
 import os
-import httpx
+import logging
 from typing import Dict, Any, List
 
-_OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
+from nutriplan_shared.service_registry import DEFAULT_LLM_MODEL
+from nutriplan_shared.llm import llm_chat
+
+logger = logging.getLogger("meal_plan.llm_engine")
+
 
 class LLMEngine:
-    def __init__(self, ollama_host: str = _OLLAMA_URL):
-        self.ollama_host = ollama_host
-        self.model = "llama3"
+    def __init__(self, model: str = DEFAULT_LLM_MODEL):
+        self.model = model
 
     async def generate_meal_plan(
         self, 
@@ -17,10 +20,9 @@ class LLMEngine:
         target_calories: int
     ) -> Dict[str, Any]:
         """
-        Calls the local Ollama API to generate a meal plan.
-        We force JSON output via prompt engineering and Ollama's json format param.
+        Calls LiteLLM (defaulting to local Ollama) to generate a structured meal plan.
+        Forces JSON output format.
         """
-        
         system_prompt = f"""
 You are a world-class AI nutritionist. Your task is to generate a 1-day meal plan based on the following constraints.
 Target Calories: {target_calories} kcal (+/- 10%)
@@ -57,31 +59,34 @@ IMPORTANT RULES:
   }}
 }}
 """
+        try:
+            content = await llm_chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": "Generate the meal plan now in strict JSON."}
+                ],
+                model=self.model,
+                temperature=0.2,
+                max_tokens=1500,
+                response_format={"type": "json_object"},
+                timeout=120.0
+            )
 
-        payload = {
-            "model": self.model,
-            "prompt": "Generate the meal plan now.",
-            "system": system_prompt,
-            "stream": False,
-            "format": "json",
-            "options": {
-                "temperature": 0.2 # Low temperature for more deterministic/calculable outputs
-            }
-        }
+            # Strip markdown code blocks if the model wrapped output
+            clean_content = content.strip()
+            if clean_content.startswith("```json"):
+                clean_content = clean_content[7:]
+            elif clean_content.startswith("```"):
+                clean_content = clean_content[3:]
+            if clean_content.endswith("```"):
+                clean_content = clean_content[:-3]
+            clean_content = clean_content.strip()
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            try:
-                response = await client.post(f"{self.ollama_host}/api/generate", json=payload)
-                response.raise_for_status()
-                data = response.json()
-                
-                # The response from Ollama should be valid JSON string inside the 'response' key
-                content = data.get("response", "{}")
-                return json.loads(content)
-                
-            except (httpx.RequestError, json.JSONDecodeError) as e:
-                print(f"[!] Error calling Ollama LLM: {str(e)}")
-                # Return a fallback/empty plan structure on failure so the workflow can handle it
-                return {"meals": [], "error": str(e)}
+            return json.loads(clean_content)
+
+        except Exception as e:
+            logger.error(f"Error calling LiteLLM for meal plan generation: {e}")
+            return {"meals": [], "error": str(e)}
+
 
 llm_engine = LLMEngine()

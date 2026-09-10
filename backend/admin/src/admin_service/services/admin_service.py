@@ -514,9 +514,79 @@ from ..schemas.admin_schemas import (
     CostCenterOverview
 )
 
+# LiteLLM Proxy live telemetry settings
+LITELLM_PROXY_URL  = os.getenv("LITELLM_PROXY_URL",  "http://localhost:4000")
+LITELLM_MASTER_KEY = os.getenv("LITELLM_MASTER_KEY", "sk-nutriplan-litellm-proxy-admin")
+
+
+async def get_litellm_live_metrics() -> dict:
+    """
+    Fetch live token usage and spend data directly from the LiteLLM Proxy.
+    Returns a dict with: proxy_healthy, total_spend, spend_logs
+    """
+    headers = {"Authorization": f"Bearer {LITELLM_MASTER_KEY}"}
+    result = {"proxy_healthy": False, "total_spend": 0.0, "spend_logs": []}
+
+    async with httpx.AsyncClient(timeout=2.5) as client:
+        # 1. Health check
+        try:
+            hr = await client.get(f"{LITELLM_PROXY_URL}/health/liveliness", headers=headers)
+            result["proxy_healthy"] = hr.status_code in (200, 307)
+        except Exception:
+            return result
+
+        # 2. Global spend
+        try:
+            sr = await client.get(f"{LITELLM_PROXY_URL}/global/spend", headers=headers)
+            if sr.status_code == 200:
+                result["total_spend"] = sr.json().get("spend", 0.0) or 0.0
+        except Exception:
+            pass
+
+        # 3. Recent spend logs (last 50 calls)
+        try:
+            lr = await client.get(
+                f"{LITELLM_PROXY_URL}/spend/logs",
+                headers=headers,
+                params={"limit": 50}
+            )
+            if lr.status_code == 200:
+                raw_logs = lr.json() if isinstance(lr.json(), list) else []
+                # Only include calls that actually have a model (filter out auth-error noise)
+                result["spend_logs"] = [
+                    {
+                        "request_id":       log.get("request_id", "")[:8],
+                        "model":            log.get("model") or log.get("model_group") or "—",
+                        "provider":         log.get("custom_llm_provider") or "local",
+                        "total_tokens":     log.get("total_tokens", 0),
+                        "prompt_tokens":    log.get("prompt_tokens", 0),
+                        "completion_tokens": log.get("completion_tokens", 0),
+                        "spend_usd":        round(log.get("spend", 0.0) or 0.0, 6),
+                        "duration_ms":      log.get("request_duration_ms", 0) or 0,
+                        "status":           log.get("metadata", {}).get("status", "success") if log.get("metadata") else "success",
+                        "timestamp":        (log.get("startTime") or "")[:19].replace("T", " "),
+                    }
+                    for log in raw_logs
+                    if log.get("model") or log.get("total_tokens", 0) > 0
+                ]
+        except Exception:
+            pass
+
+    return result
+
 _AVAILABLE_LLM_MODELS: list[LLMModelOption] = [
     LLMModelOption(
-        id="ollama/llama3:8b",
+        id="ollama/llama3.2:latest",
+        name="Llama 3.2 (3B - Local Default)",
+        provider="local_ollama",
+        cost_per_1k_input_usd=0.00,
+        cost_per_1k_output_usd=0.00,
+        is_local=True,
+        context_window=131072,
+        supports_vision=False
+    ),
+    LLMModelOption(
+        id="ollama/llama3:latest",
         name="Llama 3 (8B Instruct - Local)",
         provider="local_ollama",
         cost_per_1k_input_usd=0.00,
@@ -653,18 +723,28 @@ _SERVICE_LLM_CONFIGS: dict[str, ServiceLLMConfig] = {
 
 
 
-async def get_cost_center_overview() -> CostCenterOverview:
+async def get_cost_center_overview() -> dict:
     services = list(_SERVICE_LLM_CONFIGS.values())
     total_tokens = sum(s.total_tokens_consumed for s in services)
     total_budget = sum(s.monthly_budget_usd for s in services)
     total_burned = sum(s.current_burn_usd for s in services)
 
-    # Estimate savings by running on local Ollama instead of GPT-4o
-    # GPT-4o blended rate is ~$0.01 per 1k tokens
+    # Estimate savings vs GPT-4o at ~$0.01 per 1k tokens
     estimated_cloud_cost = round((total_tokens / 1000) * 0.01, 2)
     savings = round(estimated_cloud_cost - total_burned, 2)
 
-    # Fetch live registered users from auth service to populate live telemetry
+    # --- Live LiteLLM telemetry ---
+    litellm_metrics = await get_litellm_live_metrics()
+    litellm_real_spend = litellm_metrics["total_spend"]
+    litellm_spend_logs = litellm_metrics["spend_logs"]
+    litellm_proxy_healthy = litellm_metrics["proxy_healthy"]
+
+    # Merge real token counts from live logs into total_tokens
+    live_total_tokens = sum(log["total_tokens"] for log in litellm_spend_logs)
+    if live_total_tokens > 0:
+        total_tokens = max(total_tokens, live_total_tokens)
+
+    # Fetch live registered users from auth service
     dynamic_user_burners: list[UserBurnMetric] = []
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
@@ -691,8 +771,8 @@ async def get_cost_center_overview() -> CostCenterOverview:
     except Exception:
         pass
 
-    return CostCenterOverview(
-        total_burned_usd=total_burned,
+    overview = CostCenterOverview(
+        total_burned_usd=litellm_real_spend if litellm_real_spend > 0 else total_burned,
         monthly_budget_total_usd=total_budget,
         local_inference_savings_usd=max(0.0, savings),
         total_tokens_processed=total_tokens,
@@ -701,6 +781,14 @@ async def get_cost_center_overview() -> CostCenterOverview:
         available_models=_AVAILABLE_LLM_MODELS,
         top_user_burners=dynamic_user_burners
     )
+
+    # Return as dict so we can attach extra live telemetry fields
+    result = overview.model_dump()
+    result["litellm_proxy_healthy"] = litellm_proxy_healthy
+    result["litellm_proxy_url"] = LITELLM_PROXY_URL
+    result["litellm_spend_logs"] = litellm_spend_logs
+    result["litellm_real_spend_usd"] = round(litellm_real_spend, 6)
+    return result
 
 
 

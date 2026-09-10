@@ -35,4 +35,11 @@ app = FastAPI(
 add_standard_middleware(app)
 add_health_endpoints(app, service_name="marketplace-service")
 
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+UPLOAD_DIR = Path("/Users/anishganga/Project-nutri/backend/marketplace/uploads/avatars")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/api/v1/marketplace/uploads", StaticFiles(directory=str(UPLOAD_DIR.parent)), name="uploads")
+
 app.include_router(nutritionists.router, prefix="/api/v1/marketplace/nutritionists", tags=["Marketplace"])

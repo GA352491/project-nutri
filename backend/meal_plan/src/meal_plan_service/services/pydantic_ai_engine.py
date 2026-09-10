@@ -12,8 +12,6 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 
-_OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
-
 
 # ── Strict output schema for the LLM ─────────────────────────────────────────
 
@@ -45,9 +43,16 @@ class DailyPlan(BaseModel):
 
 # ── Pydantic AI Agent using local Ollama ─────────────────────────────────────
 
-# Ollama exposes an OpenAI-compatible API — URL from env (APP_SCHEME + APP_DOMAIN + APP_PORT_OLLAMA)
+# Ollama exposes an OpenAI-compatible API — URL from env (OLLAMA_URL from service_registry)
 try:
-    _ollama_model = OpenAIChatModel("llama3", base_url=f"{_OLLAMA_URL}/v1", api_key="ollama")
+    from nutriplan_shared.service_registry import OLLAMA_URL as _OLLAMA_URL
+except ImportError:
+    _OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+
+_DEFAULT_MODEL = os.getenv("PYDANTIC_AI_MODEL", "llama3.2:latest")
+
+try:
+    _ollama_model = OpenAIChatModel(_DEFAULT_MODEL, base_url=f"{_OLLAMA_URL}/v1", api_key="ollama")
     meal_plan_agent = Agent(
         model=_ollama_model,
         result_type=DailyPlan,
@@ -55,7 +60,7 @@ try:
     )
 except Exception:
     try:
-        _ollama_model = OpenAIChatModel("llama3")
+        _ollama_model = OpenAIChatModel(_DEFAULT_MODEL)
         meal_plan_agent = Agent(model=_ollama_model, result_type=DailyPlan)
     except Exception:
         meal_plan_agent = None

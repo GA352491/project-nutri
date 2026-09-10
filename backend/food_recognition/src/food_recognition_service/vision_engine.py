@@ -19,10 +19,10 @@ except Exception:
 
 from .extended_food_db import EXTENDED_FOOD_DB
 
-# URLs sourced from environment — set in root .env (APP_SCHEME + APP_DOMAIN + APP_PORT_OLLAMA)
-# Override OLLAMA_URL here for remote Ollama instances without touching source code.
-OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
-VISION_MODEL: str = os.getenv("VISION_MODEL", "llava")
+from nutriplan_shared.service_registry import OLLAMA_URL
+from nutriplan_shared.llm import llm_chat
+
+VISION_MODEL: str = os.getenv("VISION_MODEL", "ollama/llava")
 
 # Combined database including home and outside restaurant/cafe items
 FOOD_DB: Dict[str, FoodItem] = {**EXTENDED_FOOD_DB}
@@ -92,31 +92,66 @@ def _estimate_outside_food_nutrients(food_name: str, portion_g: float = 200) -> 
 async def analyze_image(image_bytes: bytes, user_region: str = "india") -> RecognitionResponse:
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-    # Step 1: Query local or cloud Vision model (LLaVA / Gemini)
+    # Step 1: Query local or cloud Vision model via LiteLLM (LLaVA / Gemini)
     food_names: List[str] = []
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": VISION_MODEL,
-                    "prompt": (
-                        "You are a clinical nutritionist and food vision AI. Identify all individual food or beverage items on this plate/table "
-                        "(including restaurant dishes, cafe items, sides, drinks). "
-                        "Return a JSON array of strings containing standard dish names. "
-                        "Example: [\"Butter Chicken\", \"Garlic Naan\", \"Cappuccino\"]. Output strictly valid JSON."
-                    ),
-                    "images": [image_b64],
-                    "stream": False,
+        content = await llm_chat(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "You are a clinical nutritionist and food vision AI. Identify all individual food or beverage items on this plate/table "
+                                "(including restaurant dishes, cafe items, sides, drinks). "
+                                "Return a JSON array of strings containing standard dish names. "
+                                "Example: [\"Butter Chicken\", \"Garlic Naan\", \"Cappuccino\"]. Output strictly valid JSON."
+                            )
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_b64}"
+                            }
+                        }
+                    ]
                 }
-            )
-            raw_text = resp.json().get("response", "")
-            start = raw_text.find("[")
-            end = raw_text.rfind("]") + 1
-            if start != -1 and end > start:
-                food_names = json.loads(raw_text[start:end])
+            ],
+            model=VISION_MODEL,
+            response_format={"type": "json_object"},
+            timeout=15.0
+        )
+        start = content.find("[")
+        end = content.rfind("]") + 1
+        if start != -1 and end > start:
+            food_names = json.loads(content[start:end])
     except Exception:
-        pass
+        # Last-resort fallback: direct Ollama /api/generate (used when vision model
+        # doesn't support the OpenAI-compatible chat+image_url format via LiteLLM).
+        # Uses VISION_MODEL stripped of the "ollama/" prefix for the native Ollama API.
+        _native_model = VISION_MODEL.removeprefix("ollama/")
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.post(
+                    f"{OLLAMA_URL}/api/generate",
+                    json={
+                        "model": _native_model,
+                        "prompt": (
+                            "Identify all individual food or beverage items on this plate. "
+                            "Return a JSON array of strings. Example: [\"Paneer\", \"Roti\"]."
+                        ),
+                        "images": [image_b64],
+                        "stream": False,
+                    }
+                )
+                raw_text = resp.json().get("response", "")
+                start = raw_text.find("[")
+                end = raw_text.rfind("]") + 1
+                if start != -1 and end > start:
+                    food_names = json.loads(raw_text[start:end])
+        except Exception:
+            pass
 
     # Step 2: Fallback heuristic if vision API is offline or returns empty
     if not food_names:

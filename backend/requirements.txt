@@ -6,6 +6,7 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 
 # ── AI / LLM ───────────────────────────────────────────
+litellm>=1.40.0               # Universal LLM proxy / adapter (Ollama, OpenAI, Anthropic, Gemini)
 pydantic-ai>=0.0.14           # Structured LLM extraction (local Ollama compatible)
 langgraph>=0.2.0              # Multi-agent stateful workflows
 langchain-core>=0.3.0         # LangChain primitives used by LangGraph

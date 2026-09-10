@@ -88,6 +88,7 @@ FOOD_VISION_URL      = svc_url(_PORT_FOOD_VISION)
 MARKETPLACE_URL      = svc_url(_PORT_MARKETPLACE)
 GATEWAY_URL          = svc_url(_PORT_GATEWAY)
 OLLAMA_URL           = os.getenv("OLLAMA_URL", svc_url(_PORT_OLLAMA))
+DEFAULT_LLM_MODEL    = os.getenv("DEFAULT_LLM_MODEL", "ollama/llama3.2:latest")
 TEMPORAL_UI_URL      = svc_url(_PORT_TEMPORAL_UI)
 
 # Frontend origin (used in Stripe redirects, CORS fallbacks)
@@ -116,9 +117,15 @@ SERVICES_CATALOGUE: List[Dict] = [
     {"name": "Wearable",                  "key": "wearable",         "url": WEARABLE_URL,         "prefix": "/api/v1/wearable"},
     {"name": "Admin",                     "key": "admin",            "url": ADMIN_URL,            "prefix": "/api/v1/admin"},
     {"name": "Marketplace",               "key": "marketplace",      "url": MARKETPLACE_URL,      "prefix": "/api/v1/marketplace"},
+    {"name": "Ollama LLM Engine",         "key": "ollama",           "url": OLLAMA_URL,           "prefix": "/api"},
+    {"name": "Temporal Server & UI",      "key": "temporal",         "url": TEMPORAL_UI_URL,      "prefix": ""},
 ]
 
 # Simple (name, health_url) tuples for health-probe loops
 SERVICES_HEALTH_MAP: List[Tuple[str, str]] = [
-    (svc["name"], f"{svc['url']}/health") for svc in SERVICES_CATALOGUE
+    (
+        svc["name"],
+        f"{svc['url']}/" if svc["key"] in ("ollama", "temporal") else f"{svc['url']}/health"
+    )
+    for svc in SERVICES_CATALOGUE
 ]

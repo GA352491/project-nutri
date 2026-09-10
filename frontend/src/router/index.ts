@@ -76,8 +76,10 @@ const routes: RouteRecordRaw[] = [
  ]
  },
 
- // Expert Onboarding — standalone (auth required, no role needed; nutritionists self-register)
+ // Expert Onboarding & Claim
  { path: '/expert/onboard', component: () => import('../pages/onboarding/ExpertOnboarding.vue'), meta: { layout: 'auth', title: 'Join as a Nutritionist', requiresAuth: true } },
+ { path: '/expert/claim', component: () => import('../pages/onboarding/ClaimClinicianPage.vue'), meta: { layout: 'auth', title: 'Claim Profile', public: true } },
+ { path: '/expert/setup', component: () => import('../pages/expert/ExpertProfileSetup.vue'), meta: { layout: 'fullscreen', title: 'Set Up Your Profile', public: true } },
 
  // Catch-all
  { path: '/:pathMatch(.*)*', redirect: '/dashboard' },

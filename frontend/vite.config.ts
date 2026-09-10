@@ -95,8 +95,8 @@ export default defineConfig(({ mode }) => {
         '/api/v1/delivery': target(8017),
         '/api/v1/wearables': target(8018),
         '/api/v1/wearable': target(8018),
-        '/api/v1/admin': target(8019),
-        '/api/v1/food-recognition': target(8020),
+        '/api/v1/admin': target(8020),
+        '/api/v1/food-recognition': target(8011),
         '/api/v1/marketplace': target(8025),
       }
     }

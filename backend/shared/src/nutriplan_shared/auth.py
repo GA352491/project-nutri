@@ -37,7 +37,11 @@ async def get_current_user(
 
 
 def user_uuid(user: Dict[str, Any]) -> uuid.UUID:
+    raw_sub = str(user.get("sub", "")).strip()
+    if not raw_sub:
+        raise UnauthorizedException(detail="Token missing subject")
     try:
-        return uuid.UUID(str(user["sub"]))
-    except (ValueError, KeyError) as exc:
-        raise UnauthorizedException(detail="Token subject is not a user id") from exc
+        return uuid.UUID(raw_sub)
+    except ValueError:
+        # Graceful fallback: deterministically derive a UUID from arbitrary IDs (e.g. integer IDs, strings)
+        return uuid.uuid5(uuid.NAMESPACE_DNS, f"nutriplan-user-{raw_sub}")

@@ -66,6 +66,8 @@ const aiMessages = ref<AiMessage[]>([
 ])
 const aiInput = ref('')
 const isAiTyping = ref(false)
+const isAiStreaming = ref(false)
+const streamingContent = ref('')  // accumulates token deltas
 const aiScrollRef = ref<HTMLElement | null>(null)
 const activeRegion = ref(localStorage.getItem('nutriplan_regional_pref') || 'in_south_andhra')
 
@@ -102,10 +104,57 @@ const { status: wsStatus, send: wsSend, connect: wsConnect } = useResilientWebSo
   onOpen: () => { console.log("[AI WS] Connected") },
   onMessage: async (data: any) => {
     if (data.type === 'status') {
+      // Thinking indicator before first token
       isAiTyping.value = true
-    } else if (data.type === 'ai_response' || data.type === 'escalation') {
+
+    } else if (data.type === 'token') {
+      // First token: swap typing indicator → streaming bubble
+      if (!isAiStreaming.value) {
+        isAiTyping.value = false
+        isAiStreaming.value = true
+        streamingContent.value = ''
+      }
+      streamingContent.value += data.delta
+      await scrollAi()
+
+    } else if (data.type === 'done') {
+      // Streaming complete: commit the buffered message
+      if (isAiStreaming.value && streamingContent.value.trim()) {
+        aiMessages.value.push({
+          id: String(Date.now()),
+          role: 'assistant',
+          content: streamingContent.value.trim(),
+          timestamp: new Date()
+        })
+      }
+      isAiStreaming.value = false
       isAiTyping.value = false
-      aiMessages.value.push({ id: String(Date.now()), role: 'assistant', content: data.message || data.text || '', timestamp: new Date() })
+      streamingContent.value = ''
+      await scrollAi()
+
+    } else if (data.type === 'escalation') {
+      isAiStreaming.value = false
+      isAiTyping.value = false
+      streamingContent.value = ''
+      aiMessages.value.push({
+        id: String(Date.now()),
+        role: 'assistant',
+        content: data.message || data.text || 'Connecting you to a clinical nutritionist...',
+        timestamp: new Date()
+      })
+      await scrollAi()
+
+    } else if (data.type === 'ai_response') {
+      // Legacy non-streaming fallback
+      isAiTyping.value = false
+      isAiStreaming.value = false
+      streamingContent.value = ''
+      aiMessages.value.push({
+        id: String(Date.now()),
+        role: 'assistant',
+        content: data.message || data.text || '',
+        timestamp: new Date()
+      })
       await scrollAi()
     }
   },
@@ -449,7 +498,15 @@ onUnmounted(() => {
           :sender-name="msg.role === 'assistant' ? 'NutriPlan AI' : undefined"
           :message="msg.content"
         />
-        <div v-if="isAiTyping" class="flex items-end gap-2">
+        <!-- Live streaming bubble (token-by-token) -->
+        <div v-if="isAiStreaming" class="flex items-end gap-2">
+          <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-[0.75rem] font-bold shrink-0">N</div>
+          <div class="bg-info-soft text-info rounded-2xl rounded-bl-sm px-4 py-3 max-w-[80%] font-body text-sm leading-relaxed">
+            <span style="white-space: pre-wrap">{{ streamingContent }}</span><span class="inline-block w-0.5 h-4 bg-current ml-0.5 animate-pulse align-middle"></span>
+          </div>
+        </div>
+        <!-- Thinking indicator (before first token) -->
+        <div v-else-if="isAiTyping" class="flex items-end gap-2">
           <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-[0.75rem] font-bold shrink-0">N</div>
           <div class="bg-info-soft text-info rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
             <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce" style="animation-delay: 0ms" />
@@ -473,7 +530,7 @@ onUnmounted(() => {
             class="flex-1 font-body text-[0.88rem] text-ink bg-canvas-raised border border-border rounded-xl px-4 py-3 outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-ink-muted/60 max-h-32 overflow-y-auto"
             @keydown="handleKeydown($event, 'ai')"
           />
-          <button class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong disabled:opacity-50 active:scale-95" :disabled="!aiInput.trim() || isAiTyping" @click="sendAiMessage()">
+          <button class="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 hover:bg-primary-strong disabled:opacity-50 active:scale-95" :disabled="!aiInput.trim() || isAiTyping || isAiStreaming" @click="sendAiMessage()">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" /></svg>
           </button>
         </div>

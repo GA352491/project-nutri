@@ -39,6 +39,8 @@ interface ServiceLatency {
 
 const serviceLatencies = ref<ServiceLatency[]>([])
 
+const lastUpdated = ref('')
+
 async function fetchAnalytics() {
   isLoading.value = true
   try {
@@ -62,6 +64,7 @@ async function fetchAnalytics() {
     if (res.data?.latencies) {
       serviceLatencies.value = res.data.latencies
     }
+    lastUpdated.value = new Date().toLocaleTimeString()
   } catch (err) {
     console.warn('Analytics API unavailable:', err)
   } finally {
@@ -106,9 +109,28 @@ const chartOptions = {
 
 <template>
  <div class="space-y-8">
+  <!-- Header with Live Refresh -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
+    <div>
+      <h1 class="font-display font-bold text-2xl text-ink">Microservices & Financial Analytics</h1>
+      <p class="font-body text-xs text-ink-muted mt-1">Real-time telemetry across 19 services, revenue streams, and cost centers.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span v-if="lastUpdated" class="text-xs font-data text-ink-muted">Updated: {{ lastUpdated }}</span>
+      <button
+        @click="fetchAnalytics"
+        :disabled="isLoading"
+        class="px-3 py-1.5 rounded-lg bg-canvas-raised border border-border hover:border-primary text-xs font-semibold text-ink inline-flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50"
+      >
+        <span :class="{ 'animate-spin': isLoading }">↻</span>
+        <span>{{ isLoading ? 'Refreshing...' : 'Refresh Metrics' }}</span>
+      </button>
+    </div>
+  </div>
 
  <!-- Loading state -->
- <div v-if="isLoading" class="p-8 text-center text-ink-muted font-body text-sm">
+ <div v-if="isLoading && !lastUpdated" class="p-8 text-center text-ink-muted font-body text-sm flex items-center justify-center gap-2">
+  <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
   Loading analytics from live services...
  </div>
 

@@ -30,6 +30,54 @@ const pageSize = 6
 const actionTier = ref<BadgeTier>('ncahp_verified')
 const actionNote = ref('')
 
+// ── Invite Clinician State ──────────────────────────────────────────────────
+const showInviteModal = ref(false)
+const isInviting = ref(false)
+const inviteForm = ref({
+  name: '',
+  email: '',
+  ncahp_reg_number: '',
+  ida_membership_number: '',
+  assigned_tier: 'ncahp_verified' as BadgeTier,
+  specialtiesText: 'Diabetes Management, Metabolic Health, PCOS',
+  hourly_rate_usd: 90,
+})
+
+async function submitInvite() {
+  if (!inviteForm.value.name.trim() || !inviteForm.value.email.includes('@')) {
+    notify('Please enter a valid practitioner name and email.')
+    return
+  }
+  isInviting.value = true
+  try {
+    const specialties = inviteForm.value.specialtiesText.split(',').map(s => s.trim()).filter(Boolean)
+    await store.inviteClinician({
+      name: inviteForm.value.name.trim(),
+      email: inviteForm.value.email.trim(),
+      ncahp_reg_number: inviteForm.value.ncahp_reg_number.trim() || undefined,
+      ida_membership_number: inviteForm.value.ida_membership_number.trim() || undefined,
+      assigned_tier: inviteForm.value.assigned_tier,
+      specialties,
+      hourly_rate_usd: inviteForm.value.hourly_rate_usd,
+    })
+    showInviteModal.value = false
+    notify(`Invitation dispatched to ${inviteForm.value.email}! Activation token generated.`)
+    inviteForm.value = {
+      name: '',
+      email: '',
+      ncahp_reg_number: '',
+      ida_membership_number: '',
+      assigned_tier: 'ncahp_verified',
+      specialtiesText: 'Diabetes Management, Metabolic Health, PCOS',
+      hourly_rate_usd: 90,
+    }
+  } catch (err: any) {
+    notify(`Failed to send invite: ${err.message || 'Error'}`)
+  } finally {
+    isInviting.value = false
+  }
+}
+
 function notify(msg: string) {
   toastMsg.value = msg
   showToast.value = true
@@ -185,6 +233,13 @@ const tierOptions: Array<{ value: BadgeTier; label: string; tierBadge: string; d
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
           Refresh
+        </Button>
+        <Button variant="primary" size="sm" @click="showInviteModal = true">
+          <svg class="w-3.5 h-3.5 mr-1.5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Invite Clinician
         </Button>
       </div>
     </div>
@@ -646,6 +701,100 @@ const tierOptions: Array<{ value: BadgeTier; label: string; tierBadge: string; d
           <Button variant="outline" size="sm" @click="showActionModal = null">Cancel</Button>
           <Button :variant="actionModalConfig?.variant ?? 'primary'" size="sm" @click="confirmAction">
             {{ actionModalConfig?.cta }}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+
+    <!-- ── Invite Clinician Modal ────────────────────────────────────────── -->
+    <Modal
+      v-model="showInviteModal"
+      title="Invite Clinician & Pre-Verify"
+      size="md"
+    >
+      <div class="space-y-4">
+        <p class="text-xs text-ink-muted">
+          Generate a pre-verified practitioner account. The clinician will receive an email containing a secure 1-time magic link to claim their profile and set a password.
+        </p>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">Clinician Full Name *</label>
+            <input
+              v-model="inviteForm.name"
+              type="text"
+              placeholder="e.g. Dr. Kavita Nair, RD"
+              class="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-border text-ink focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">Email Address *</label>
+            <input
+              v-model="inviteForm.email"
+              type="email"
+              placeholder="kavita.nair@hospital.org"
+              class="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-border text-ink focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">NCAHP Reg No.</label>
+              <input
+                v-model="inviteForm.ncahp_reg_number"
+                type="text"
+                placeholder="NCAHP/RD/2024/..."
+                class="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-border text-ink focus:outline-none focus:border-primary font-mono"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">IDA Member No.</label>
+              <input
+                v-model="inviteForm.ida_membership_number"
+                type="text"
+                placeholder="IDA-REG-..."
+                class="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-border text-ink focus:outline-none focus:border-primary font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">Pre-Assigned Badge Tier</label>
+            <select
+              v-model="inviteForm.assigned_tier"
+              class="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-border text-ink focus:outline-none focus:border-primary"
+            >
+              <option value="ncahp_verified">Gold — NCAHP Central Register Verified</option>
+              <option value="ida_verified">Silver — IDA Registered Dietitian</option>
+              <option value="degree_verified">Bronze — University Degree Verified</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">Specialties (comma-separated)</label>
+            <input
+              v-model="inviteForm.specialtiesText"
+              type="text"
+              class="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-border text-ink focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1">Consultation Hourly Rate ($ USD)</label>
+            <input
+              v-model.number="inviteForm.hourly_rate_usd"
+              type="number"
+              min="30"
+              class="w-full px-3 py-2 text-xs rounded-lg bg-canvas border border-border text-ink focus:outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-border">
+          <Button variant="outline" size="sm" @click="showInviteModal = false">Cancel</Button>
+          <Button variant="primary" size="sm" :disabled="isInviting" @click="submitInvite">
+            {{ isInviting ? 'Dispatching...' : 'Dispatch Email Invitation' }}
           </Button>
         </div>
       </div>
